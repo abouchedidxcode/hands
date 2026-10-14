@@ -1,17 +1,21 @@
 import type { Stats } from '../game/types';
 
 const orb = (id: string, icon: string, label: string, cls = '', sub = '') =>
-  `<div class="hb ${cls}" data-hb id="${id}"><div class="icon">${icon}</div>${label}${sub ? `<div class="sub">${sub}</div>` : ''}</div>`;
+  `<div class="hb ${cls}" data-hb id="${id}"><div class="icon">${icon}</div><div class="lbl">${label}</div>${sub ? `<div class="sub">${sub}</div>` : ''}</div>`;
+
+const vs = (a: string | number, b: string | number) => `${a}<small> : ${b}</small>`;
 
 export const onlineScreens = {
   lobby: () => `
-    <div class="panel">
+    <div class="panel online">
+      <h3>A duel between gods</h3>
       <h2>ONLINE DUEL</h2>
-      <p class="tagline">1v1 against another god, hand to hand. Free, peer-to-peer.</p>
+      <div class="duel-vs"><span class="me">✋ YOU</span><i>versus</i><span class="them">ANOTHER GOD ✋</span></div>
+      <p class="tagline">One island, two pairs of hands. Free &amp; peer-to-peer.</p>
       <div class="orbs">
         ${orb('b-back', '↩', 'BACK', 'small')}
-        ${orb('b-quick', '⚔️', 'QUICK MATCH', 'primary', 'Find a random opponent')}
-        ${orb('b-room', '🔗', 'PRIVATE', 'small gold', 'Invite a friend')}
+        ${orb('b-quick', '⚔️', 'QUICK MATCH', 'primary', 'random opponent')}
+        ${orb('b-room', '🔗', 'PRIVATE', 'small gold', 'invite a friend')}
       </div>
     </div>`,
 
@@ -19,33 +23,36 @@ export const onlineScreens = {
     <div class="panel raise">
       <div class="g net-spin">🌍</div>
       <h2>${msg}</h2>
-      <p class="tagline">Looking for another god somewhere in the world…</p>
+      <p class="tagline">Searching the known world for another god…</p>
+      <div class="lbar"><i></i></div>
       <div class="orbs">${orb('b-cancel', '✕', 'CANCEL', 'small danger')}</div>
     </div>`,
 
   room: (code: string, link: string) => `
-    <div class="panel">
+    <div class="panel online">
       <h2>PRIVATE DUEL</h2>
-      <p class="tagline">Send this link to a friend. The battle starts when they open it.</p>
+      <p class="tagline">Send this link to a friend — the battle begins when they open it.</p>
       <div class="room-code">${code}</div>
-      <div class="room-link interactive"><input id="room-link" readonly value="${link}"/><button id="b-copy" class="interactive">Copy link</button></div>
+      <div class="room-link interactive"><input id="room-link" readonly value="${link}"/><button id="b-copy" class="interactive">COPY LINK</button></div>
       <div class="orbs">${orb('b-cancel', '✕', 'CANCEL', 'small danger')}</div>
     </div>`,
 
   results: (win: boolean, time: number, me: Stats, opp: Stats | null, reason = '') => `
-    <div class="panel">
-      <h2 class="${win ? 'victory' : 'defeat'}" style="font-size:clamp(48px,8vw,96px)">${win ? 'VICTORY' : 'DEFEAT'}</h2>
-      <h3>Online duel${reason ? ' · ' + reason : ''}</h3>
-      <div class="stats">
-        <div class="stat"><b>${fmt(time)}</b><span>Time</span></div>
-        <div class="stat"><b>${me.captures}${opp ? ' : ' + opp.captures : ''}</b><span>Captured</span></div>
-        <div class="stat"><b>${me.kills}${opp ? ' : ' + opp.kills : ''}</b><span>Kills</span></div>
-        <div class="stat"><b>${me.smites}${opp ? ' : ' + opp.smites : ''}</b><span>Smites</span></div>
-        <div class="stat"><b>${me.peakArmy}${opp ? ' : ' + opp.peakArmy : ''}</b><span>Peak army</span></div>
+    <div class="panel results ${win ? 'win' : 'lose'}">
+      <div class="res-head">
+        <h2 class="${win ? 'victory' : 'defeat'}">${win ? 'VICTORY' : 'DEFEAT'}</h2>
+        <h3>Online duel${reason ? ' · ' + reason : ''}</h3>
+      </div>
+      <div class="stats duel">
+        <div class="stat hi"><b>${fmt(time)}</b><span>Time</span></div>
+        <div class="stat"><b>${opp ? vs(me.captures, opp.captures) : me.captures}</b><span>Captured</span></div>
+        <div class="stat"><b>${opp ? vs(me.kills, opp.kills) : me.kills}</b><span>Kills</span></div>
+        <div class="stat"><b>${opp ? vs(me.smites, opp.smites) : me.smites}</b><span>Smites</span></div>
+        <div class="stat"><b>${opp ? vs(me.peakArmy, opp.peakArmy) : me.peakArmy}</b><span>Peak army</span></div>
       </div>
       <div class="orbs">
         ${orb('b-menu', '🏠', 'MENU', 'small')}
-        ${orb('b-rematch', '↻', 'REMATCH', 'primary', 'Both must agree')}
+        ${orb('b-rematch', '↻', 'REMATCH', 'primary', 'both must agree')}
       </div>
     </div>`,
 };

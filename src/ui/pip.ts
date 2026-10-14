@@ -5,7 +5,7 @@ const BONES: [number, number][] = [
   [0, 1], [1, 2], [2, 3], [3, 4], [0, 5], [5, 6], [6, 7], [7, 8], [9, 10], [10, 11], [11, 12],
   [13, 14], [14, 15], [15, 16], [0, 17], [17, 18], [18, 19], [19, 20], [5, 9], [9, 13], [13, 17],
 ];
-const COLORS = ['#8ff1ff', '#ffe3a0'];
+const COLORS = ['#ffd36a', '#7fd0ff']; // gold leaf (hand 1), cerulean (hand 2)
 
 /** Draws neon skeletons + the active tracking zone over the mirrored webcam picture-in-picture. */
 export function drawPip(canvas: HTMLCanvasElement, frame: InputFrame, input: { video: HTMLVideoElement }) {
@@ -36,7 +36,7 @@ export function drawPip(canvas: HTMLCanvasElement, frame: InputFrame, input: { v
   // active zone: corner brackets (where your hand maps onto the whole screen)
   const zx0 = px(0), zy0 = py(0), zx1 = px(1), zy1 = py(1);
   const L0 = Math.min(zx1 - zx0, zy1 - zy0) * 0.14;
-  c.strokeStyle = n ? 'rgba(160,240,255,0.55)' : 'rgba(255,255,255,0.4)';
+  c.strokeStyle = n ? 'rgba(255,225,150,0.7)' : 'rgba(241,227,194,0.45)';
   c.lineWidth = 2 * k;
   c.lineCap = 'round';
   c.beginPath();
@@ -60,11 +60,11 @@ export function drawPip(canvas: HTMLCanvasElement, frame: InputFrame, input: { v
     c.shadowBlur = 0;
     // gesture label
     const label = hand.pinch ? 'PINCH' : hand.fist ? 'FIST' : hand.open ? 'OPEN' : hand.gesture.toUpperCase();
-    c.font = `700 ${Math.round(11 * k)}px Rubik, system-ui, sans-serif`;
+    c.font = `900 ${Math.round(11 * k)}px Cinzel, Georgia, serif`;
     c.textAlign = 'center';
     const lx = px(L[0].x), ly = py(L[0].y) + 18 * k;
     const tw = c.measureText(label).width + 12 * k;
-    c.fillStyle = 'rgba(4,14,22,0.75)';
+    c.fillStyle = 'rgba(42,26,14,0.8)';
     c.beginPath();
     c.roundRect(lx - tw / 2, ly - 12 * k, tw, 17 * k, 8 * k);
     c.fill();

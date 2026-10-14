@@ -50,7 +50,7 @@ function shareLine(win: boolean, level: Level, time: number, stats: Stats) {
 
 /** Deterministic little confetti burst behind the victory stars. */
 function confetti() {
-  const cols = ['#ffd166', '#33e1ff', '#ffffff', '#ffb22e', '#9ff3ff'];
+  const cols = ['#e2b23c', '#1f9be8', '#fff1d0', '#b0261d', '#f0c54c'];
   let out = '';
   for (let i = 0; i < 28; i++) {
     const a = (i / 28) * Math.PI * 2 + (i % 3) * 0.21;

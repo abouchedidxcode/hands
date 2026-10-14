@@ -3,6 +3,7 @@
 import * as THREE from 'three';
 import { makeRng, makeSimplex2, fbm, ridged, smoothstep, clamp, lerp } from './terrainNoise';
 import { createWater } from './terrainWater';
+import { buildOrnaments } from './atlasOrnaments';
 import { ATLAS_GLSL, atlasUniforms } from './atlas';
 import {
   pineGeometry, firGeometry, roundTreeGeometry, palmGeometry, bushGeometry,
@@ -573,6 +574,11 @@ export function buildTerrain(spec: TerrainSpec): Terrain {
   group.add(water.mesh);
   disposables.push(water.geometry, water.material);
 
+  // engraved chart ornaments (compass rose, sea monsters, cartouche…) printed around the island
+  const ornaments = buildOrnaments({ seed: spec.seed, hw, hd, waterLevel: WATER_LEVEL, heightAt });
+  group.add(ornaments.group);
+  disposables.push(ornaments);
+
   // ---------------------------------------------------------------- props
   const treeMat = litMaterial(0.9, 0.035);
   const grassMat = litMaterial(0.9, 0.25);
@@ -731,6 +737,7 @@ export function buildTerrain(spec: TerrainSpec): Terrain {
     update(dt: number, t: number) {
       water.time.value = t;
       animTime.value = t;
+      ornaments.update(t);
     },
     dispose() {
       group.removeFromParent();
