@@ -154,10 +154,13 @@ class OneHand {
         const l = L[i];
         // each joint is placed on the ray through its (cursor-scaled) screen position,
         // so the thumb/index midpoint stays exactly under the cursor
-        const sx = cx + (l.x - cx) * k;
-        const sy = cy + (l.y - cy) * k;
+        // Clamp to a band just outside the screen: a joint far above the top edge (hand raised
+        // high) would cast a ray over the horizon that never meets the plane, and a stray far
+        // point stretches the hand mesh into a giant wedge that covers the whole map.
+        const sx = THREE.MathUtils.clamp(cx + (l.x - cx) * k, -0.15, 1.15);
+        const sy = THREE.MathUtils.clamp(cy + (l.y - cy) * k, -0.15, 1.15);
         const hh = THREE.MathUtils.clamp(HAND_H - l.z * DEPTH_K * k, 1.8, 7);
-        if (!stage.screenToGround(sx, sy, hh, this.pts[i])) this.pts[i].set(0, hh, 0);
+        if (!stage.screenToGround(sx, sy, hh, this.pts[i]) && !stage.screenToGround(cx, cy, hh, this.pts[i])) this.pts[i].set(0, hh, 0);
       }
       const swell = 1 + this.armedAmt * 0.05 * pulse + this.heat * 0.03;
       for (let f = 0; f < 5; f++) this.boost[f] = ONES[f] * swell;

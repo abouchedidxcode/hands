@@ -427,7 +427,8 @@ function encodeHands(frame: InputFrame): RemoteHand[] {
     if (!h.present || h.landmarks.length !== 21) { out.push({ p: false, g: 0, pts: [] }); continue; }
     const pts: number[] = [];
     for (const l of h.landmarks) {
-      const g = stage.screenToGround(l.x, l.y, 0.25, v3);
+      // clamp like HandViz does, so rays always meet the ground (no stray far points)
+      const g = stage.screenToGround(Math.min(1.15, Math.max(-0.15, l.x)), Math.min(1.15, Math.max(-0.15, l.y)), 0.25, v3);
       pts.push(g ? Math.round(g.x * 50) / 50 : 0, g ? Math.round(g.z * 50) / 50 : 0, Math.round(l.z * 1000) / 1000);
     }
     const c = stage.screenToGround(h.x, h.y, 0.25, v3);
