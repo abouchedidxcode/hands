@@ -326,9 +326,22 @@ function mixColor(a: number, b: number) {
 // ------------------------------------------------------------------ main loop
 let last = performance.now();
 let frame: InputFrame;
+let frameCount = 0;
+
+/** Advance the battle without rendering (debug / automated tests). */
+function fastForward(seconds: number) {
+  if (!world) return;
+  const step = 1 / 30;
+  for (let t = 0; t < seconds && !world.sim.over; t += step) {
+    for (const a of world.ais) a.update(world.sim, step);
+    world.sim.step(step);
+    processEvents(world.sim.events, world.sim, world.attract);
+  }
+}
 
 function tick(now: number) {
   requestAnimationFrame(tick);
+  frameCount++;
   const rawDt = Math.min(0.05, (now - last) / 1000);
   last = now;
   stateT += rawDt;
@@ -453,6 +466,8 @@ window.__godhand = {
   setState: (s: State) => setState(s),
   startLevel: (id: number) => startLevel(id >= 100 ? skirmish(id) : LEVELS[id - 1]),
   skipCountdown: () => setState('play'),
+  fastForward,
+  get frameCount() { return frameCount; },
   progress: () => progress,
   resetProgress: () => { progress = { unlocked: 1, stars: {}, tutorialDone: false }; saveProgress(progress); },
   unlockAll: () => { progress.unlocked = LEVELS.length; progress.tutorialDone = true; saveProgress(progress); },

@@ -87,8 +87,10 @@ void main() {
   // glitter: sparse twinkling cells
   vec2 gc = p * 2.6 + n.xz * 6.0;
   float gl = vnoise(gc + vec2(t * 0.7, -t * 0.4)) * vnoise(gc * 1.7 - vec2(t * 0.5, t * 0.9));
-  float glitter = smoothstep(0.62, 0.8, gl) * (0.3 + 0.7 * smoothstep(0.15, 0.6, dN));
-  col += uSunColor * (spec * 0.9 + glitter * 0.4);
+  // fade out where the glitter cells get smaller than a pixel (distance) to avoid noisy speckle
+  float px = length(fwidth(p)) * 2.6;
+  float glitter = smoothstep(0.68, 0.86, gl) * (0.3 + 0.7 * smoothstep(0.15, 0.6, dN)) * (1.0 - smoothstep(0.35, 0.9, px)) * (1.0 - 0.6 * smoothstep(0.6, 1.0, dN));
+  col += uSunColor * (spec * 0.9 + glitter * 0.3);
 
   // ---- shallow caustics ----
   float cz = vnoise(p * 1.6 + vec2(t * 0.35, t * 0.22)) + vnoise(p * 2.3 - vec2(t * 0.28, -t * 0.31));

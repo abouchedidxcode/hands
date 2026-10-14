@@ -616,7 +616,7 @@ class Bodies {
         while (acc >= 0.022) {
           acc -= 0.022;
           this.glow.spawn(x - vx * acc, y - vy * acc, z - vz * acc, 0, 0, 0, 0.32, 0.16, 0.03,
-            d[o + 17] * 2.2, d[o + 18] * 2.2, d[o + 19] * 2.2, 0.7);
+            d[o + 17] * 1.4, d[o + 18] * 1.4, d[o + 19] * 1.4, 0.7);
         }
         d[o + 20] = acc;
       } else {
@@ -809,9 +809,9 @@ export class Fx {
       const h = Math.sqrt(1 - up * up * 0.6);
       const hot = (i & 1) === 0;
       this.streaks.spawn(p.x, p.y + 0.08, p.z, Math.cos(a) * h * sp, up * sp, Math.sin(a) * h * sp, rnd(0.14, 0.3),
-        hot ? 3.2 : cr * 3, hot ? 2.6 : cg * 3, hot ? 1.5 : cb * 3, 1, 0.035, 0.035, 14, 0, p.y);
+        hot ? 3.2 : cr * 2, hot ? 2.6 : cg * 2, hot ? 1.5 : cb * 2, 1, 0.04, 0.035, 14, 0, p.y);
     }
-    this.glow.spawn(p.x, p.y + 0.1, p.z, 0, 0, 0, 0.12, 0.7, 0.3, 1.6 + cr, 1.4 + cg, 1 + cb, 0.9);
+    this.glow.spawn(p.x, p.y + 0.1, p.z, 0, 0, 0, 0.12, 0.7, 0.3, 0.5 + cr * 1.5, 0.45 + cg * 1.5, 0.35 + cb * 1.5, 0.9);
   }
 
   /** Capture celebration in faction colour. */
@@ -826,7 +826,7 @@ export class Fx {
       const sp = rnd(5, 7) * s;
       this.glow.spawn(p.x + Math.cos(a) * 0.3, p.y + 0.25, p.z + Math.sin(a) * 0.3,
         Math.cos(a) * sp, rnd(0, 0.6), Math.sin(a) * sp, rnd(0.55, 0.8), 0.32 * s, 0.06 * s,
-        cr * 3, cg * 3, cb * 3, 1, 0, 3.2);
+        cr * 2.2, cg * 2.2, cb * 2.2, 1, 0, 3.2);
     }
     // confetti fountain
     for (let i = 0; i < 34 * s; i++) {
@@ -834,16 +834,16 @@ export class Fx {
       const white = Math.random() < 0.35;
       const vy = rnd(6, 12) * s;
       this.streaks.spawn(p.x, p.y + 0.4, p.z, Math.cos(a) * h, vy, Math.sin(a) * h, rnd(0.8, 1.4),
-        white ? 3 : cr * 3.2, white ? 3 : cg * 3.2, white ? 3 : cb * 3.2, 1, 0.05 * s, 0.03, 10, 0.9, p.y);
+        white ? 3 : cr * 2.2, white ? 3 : cg * 2.2, white ? 3 : cb * 2.2, 1, 0.06 * s, 0.03, 10, 0.9, p.y);
       this.glow.spawn(p.x, p.y + 0.4, p.z, Math.cos(a) * h * 0.8, vy * 0.9, Math.sin(a) * h * 0.8, rnd(0.9, 1.6),
         0.14 * s, 0.06 * s, cr * 2 + 0.6, cg * 2 + 0.6, cb * 2 + 0.6, 1, 9, 1.0, 0.8);
     }
     // pillar of light
-    this.beam(p.x, p.y, p.z, 7 * s, 0.55 * s, 0.85, cr * 3, cg * 3, cb * 3);
+    this.beam(p.x, p.y, p.z, 7 * s, 0.7 * s, 0.85, cr * 2.2, cg * 2.2, cb * 2.2);
     // ground rings + flash
-    this.rings.spawn(p.x, p.y, p.z, 0.4 * s, 2.8 * s, 0.6, cr * 2.6, cg * 2.6, cb * 2.6, 1, 0.35, 0.12, 0);
-    this.rings.spawn(p.x, p.y, p.z, 0.2 * s, 1.6 * s, 0.9, cr * 2, cg * 2, cb * 2, 0.8, 0.5, 0.15, 0, 0.12);
-    this.rings.spawn(p.x, p.y, p.z, 2.2 * s, 2.2 * s, 0.35, cr * 1.6 + 0.4, cg * 1.6 + 0.4, cb * 1.6 + 0.4, 0.9, 1, 1, 1);
+    this.rings.spawn(p.x, p.y, p.z, 0.4 * s, 2.8 * s, 0.6, cr * 1.7, cg * 1.7, cb * 1.7, 1, 0.35, 0.12, 0);
+    this.rings.spawn(p.x, p.y, p.z, 0.2 * s, 1.6 * s, 0.9, cr * 1.4, cg * 1.4, cb * 1.4, 0.8, 0.5, 0.15, 0, 0.12);
+    this.rings.spawn(p.x, p.y, p.z, 2.2 * s, 2.2 * s, 0.35, cr * 1.2 + 0.2, cg * 1.2 + 0.2, cb * 1.2 + 0.2, 0.9, 1, 1, 1);
     this.glow.spawn(p.x, p.y + 0.6, p.z, 0, 0, 0, 0.3, 3 * s, 4.5 * s, cr * 2 + 1, cg * 2 + 1, cb * 2 + 1, 1);
   }
 
@@ -925,14 +925,14 @@ export class Fx {
   /** Expanding + fading ground ring with a short inner flash. */
   shockwave(p: THREE.Vector3, color: THREE.ColorRepresentation, radius: number): void {
     const c = this.col.set(color);
-    this.rings.spawn(p.x, p.y, p.z, 0.1, radius, 0.5, c.r * 2.4, c.g * 2.4, c.b * 2.4, 1, 0.35, 0.1, 0);
+    this.rings.spawn(p.x, p.y, p.z, 0.1, radius, 0.5, c.r * 1.6, c.g * 1.6, c.b * 1.6, 1, 0.35, 0.1, 0);
     this.rings.spawn(p.x, p.y, p.z, radius * 0.6, radius * 0.75, 0.28, c.r * 1.2, c.g * 1.2, c.b * 1.2, 0.8, 1, 1, 1);
   }
 
   /** Generic ground ring. */
   ring(p: THREE.Vector3, color: THREE.ColorRepresentation, radius: number, duration = 0.5): void {
     const c = this.col.set(color);
-    this.rings.spawn(p.x, p.y, p.z, 0, radius, Math.max(0.05, duration), c.r * 2, c.g * 2, c.b * 2, 1, 0.25, 0.1, 0);
+    this.rings.spawn(p.x, p.y, p.z, 0, radius, Math.max(0.05, duration), c.r * 1.5, c.g * 1.5, c.b * 1.5, 1, 0.25, 0.1, 0);
   }
 
   /** Small dust puff (units leaving a castle). */
@@ -940,8 +940,8 @@ export class Fx {
     for (let i = 0; i < 5; i++) {
       const a = Math.random() * TAU, sp = rnd(0.6, 1.6);
       this.smoke.spawn(p.x + Math.cos(a) * 0.15, p.y + 0.1, p.z + Math.sin(a) * 0.15,
-        Math.cos(a) * sp, rnd(0.3, 0.9), Math.sin(a) * sp, rnd(0.45, 0.8), 0.22, rnd(0.6, 0.9),
-        0.78, 0.7, 0.55, 0.55, 0, 3);
+        Math.cos(a) * sp, rnd(0.3, 0.9), Math.sin(a) * sp, rnd(0.5, 0.85), 0.3, rnd(0.8, 1.1),
+        0.8, 0.72, 0.56, 0.7, 0, 3);
     }
   }
 
@@ -1267,16 +1267,16 @@ export class Fx {
 
     this.chargeHalo.position.copy(P);
     this.chargeCore.position.copy(P);
-    const hs = R * 5 * pulse, cs = R * 1.9 * pulse;
+    const hs = R * 3.2 * pulse, cs = R * 1.4 * pulse;
     this.chargeHalo.scale.set(hs, hs, 1);
     this.chargeCore.scale.set(cs, cs, 1);
-    const hi = (0.5 + 1.6 * lv) * vis;
+    const hi = (0.4 + 1.0 * lv) * vis;
     (this.chargeHalo.material as THREE.SpriteMaterial).color.setRGB(0.25 * hi, 0.65 * hi, 1.5 * hi);
-    const ci = (1.2 + 3.5 * lv) * vis;
+    const ci = (1.2 + 2.5 * lv) * vis;
     (this.chargeCore.material as THREE.SpriteMaterial).color.setRGB(0.85 * ci, 0.95 * ci, 1.1 * ci);
 
     this.chargeLight.position.copy(P);
-    this.chargeLight.intensity = (4 + 60 * lv * lv) * vis * (0.8 + 0.4 * Math.random());
+    this.chargeLight.intensity = (3 + 18 * lv * lv) * vis * (0.8 + 0.4 * Math.random());
 
     // arcs: regenerate every ~50 ms
     this.chargeArcT -= dt;
@@ -1290,7 +1290,7 @@ export class Fx {
         ax /= l; ay /= l; az /= l;
         let bx = ax + rnd(-0.8, 0.8), by = ay + rnd(-0.8, 0.8), bz = az + rnd(-0.8, 0.8);
         l = Math.sqrt(bx * bx + by * by + bz * bz) || 1;
-        const r0 = R * 0.45, r1 = R * rnd(1.3, 2.3);
+        const r0 = R * 0.45, r1 = R * rnd(1.5, 2.8);
         const n = this.genPath(P.x + ax * r0, P.y + ay * r0, P.z + az * r0,
           P.x + bx / l * r1, P.y + by / l * r1, P.z + bz / l * r1, 3, 0.35, this.brPts);
         const base = k * 27;
@@ -1306,7 +1306,7 @@ export class Fx {
       for (let i = 0; i < n - 1; i++) {
         const o = base + i * 3;
         const f = i / (n - 1);
-        const w = 0.03 * (1 - 0.6 * f);
+        const w = 0.045 * (1 - 0.6 * f);
         const a = ab * flick * (1 - 0.6 * f);
         const A = this.arcPts;
         L.seg(A[o], A[o + 1], A[o + 2], A[o + 3], A[o + 4], A[o + 5], w * 4, w * 4, 0.4, 0.75, 2, a * 0.4, a * 0.4);

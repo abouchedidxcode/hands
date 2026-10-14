@@ -9,6 +9,7 @@ const out = process.argv[3] || 'shots';
 fs.mkdirSync(out, { recursive: true });
 
 const browser = await chromium.launch({
+  executablePath: process.env.CHROME || '/opt/pw-browsers/chromium-1194/chrome-linux/chrome',
   args: ['--use-gl=angle', '--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist',
     '--use-fake-device-for-media-stream', '--use-fake-ui-for-media-stream', '--autoplay-policy=no-user-gesture-required'],
 });
@@ -17,6 +18,12 @@ const errors = [];
 page.on('console', (m) => { if (m.type() === 'error' || m.type() === 'warning') errors.push(`[${m.type()}] ${m.text()}`); });
 page.on('pageerror', (e) => errors.push(`[pageerror] ${e.message}`));
 const wait = (ms) => page.waitForTimeout(ms);
+// wait until the game has rendered n more frames (software GL is slow)
+const frames = async (n = 2) => {
+  const start = await page.evaluate(() => window.__godhand?.frameCount ?? 0);
+  await page.waitForFunction((t) => (window.__godhand?.frameCount ?? 0) >= t, start + n, { timeout: 60000 });
+};
+const ff = (sec) => page.evaluate((s) => window.__godhand.fastForward(s), sec);
 const shot = async (name) => { await page.screenshot({ path: `${out}/${name}.png` }); console.log('shot', name); };
 
 await page.goto(url);
@@ -30,7 +37,7 @@ console.log('state after start:', st);
 
 // hand helpers (screen space 0..1)
 const hand = (x, y, extra = {}) => ({ present: true, x, y, ...extra });
-const inject = (hands) => page.evaluate((h) => window.__godhand.input.inject(h), hands);
+const inject = async (hands, n = 2) => { await page.evaluate((h) => window.__godhand.input.inject(h), hands); await frames(n); };
 const screenOf = (id) => page.evaluate((id) => {
   const g = window.__godhand; const b = g.world.sim.bases[id];
   const v = g.stage.worldToScreen({ x: b.x, y: 0.3, z: b.z, clone() { return this; } , project(){} });
@@ -43,8 +50,10 @@ await shot('03-hand-raised');
 console.log('state:', await page.evaluate(() => window.__godhand.state));
 
 // jump to level 3 directly
-await page.evaluate(() => { const g = window.__godhand; g.unlockAll(); g.startLevel(3); });
-await wait(3000);
+await page.evaluate(() => { const g = window.__godhand; g.unlockAll(); g.startLevel(3); g.skipCountdown(); });
+await frames(3);
+await ff(4);
+await frames(2);
 await shot('04-level3-start');
 
 // pinch-drag from player castle (base 0) to nearest neutral
@@ -67,9 +76,9 @@ for (let k = 1; k <= 10; k++) {
 }
 await shot('05-dragging');
 await inject([hand(plan.to.x, plan.to.y, { pinch: false })]);
-await wait(700);
+await ff(1.2); await frames(2);
 await shot('06-marching');
-await wait(4000);
+await ff(8); await frames(2);
 await shot('07-later');
 // smite on an enemy base
 const enemy = await page.evaluate(() => {
@@ -77,15 +86,17 @@ const enemy = await page.evaluate(() => {
   const b = sim.bases.find((b) => b.owner === 1); const p = g.stage.worldToScreen(new V(b.x, 0.3, b.z)); return { x: p.x, y: p.y };
 });
 await inject([hand(enemy.x, enemy.y, { fist: true, gesture: 'fist' })]);
-await wait(600);
+await inject([hand(enemy.x, enemy.y, { fist: true, gesture: 'fist' })], 3);
+await page.evaluate(() => { const c = window.__godhand.commander.ctl[0]; c.chargeT = 1; });
+await inject([hand(enemy.x, enemy.y, { fist: true, gesture: 'fist' })], 2);
 await shot('08-charging');
 await inject([hand(enemy.x, enemy.y, { open: true, gesture: 'open' })]);
-await wait(120);
+await frames(1);
 await shot('09-smite');
-await wait(500);
+await frames(3);
 await shot('10-smite-after');
-await inject(null);
-await wait(15000);
+await inject([]);
+await ff(25); await frames(3);
 await shot('11-battle-15s');
 console.log('state:', await page.evaluate(() => window.__godhand.state));
 console.log('ERRORS:\n' + errors.slice(0, 30).join('\n'));

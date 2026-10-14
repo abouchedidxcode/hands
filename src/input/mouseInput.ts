@@ -110,7 +110,8 @@ export class MouseInput {
     const fist = !pinch && (this.right || this.rightLatch);
     this.leftLatch = this.rightLatch = false;
     let open = false;
-    if (!pinch && !fist) {
+    if (pinch) this.openFrames = 0; // a smite pulse doesn't survive a pinch
+    else if (!fist) {
       if (this.openFrames > 0 || now < this.openUntil) { open = true; this.openFrames = 0; }
       else if (this.shift) open = true;
     }

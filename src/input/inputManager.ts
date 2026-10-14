@@ -40,6 +40,8 @@ export const MOUSE_TAKEOVER_MS = 3000;
 const SYNTHETIC_PALM = 0.14;
 
 type Slot = 0 | 1;
+type EdgeGiven = { start: boolean; end: boolean };
+const NO_EDGES: EdgeGiven = { start: false, end: false };
 const SLOTS: readonly Slot[] = [0, 1];
 
 function poseFor(g: Gesture): HandPose {
@@ -58,7 +60,9 @@ function isDenied(err: unknown): boolean {
 }
 
 export class InputManager {
-  status: InputStatus = 'idle';
+  private _status: InputStatus = 'idle';
+  /** Camera pipeline state. */
+  get status(): InputStatus { return this._status; }
   /** Last camera / model error message (for the UI). */
   error: string | null = null;
 
@@ -73,6 +77,10 @@ export class InputManager {
   /** Per-slot displayed (interpolated) camera cursor. */
   private display: [{ x: number; y: number } | null, { x: number; y: number } | null] = [null, null];
   private lastHandSeen = -Infinity;
+  /** ingestDetections() was called without a tracker: treat it as the camera. */
+  private externalFeed = false;
+  /** Which edge flags the current injected frame set explicitly (per slot). */
+  private edgeGiven: [EdgeGiven, EdgeGiven] = [NO_EDGES, NO_EDGES];
   private lastUpdate = NaN;
   private readonly renderTau: number;
   readonly mapping: MappingConfig;
@@ -101,16 +109,16 @@ export class InputManager {
   startCamera(): Promise<boolean> {
     if (this.status === 'running') return Promise.resolve(true);
     if (this.startPromise) return this.startPromise;
-    this.status = 'loading';
+    this._status = 'loading';
     this.error = null;
     const tracker = new HandTracker(this._video);
     this.startPromise = tracker.start().then(
       () => {
         this.tracker = tracker;
-        this.status = 'running';
+        this._status = 'running';
         this.lastHandSeen = performance.now();
         tracker.onEnded = () => {
-          this.status = 'error';
+          this._status = 'error';
           this.error = 'Camera stream ended';
           this.tracker?.stop();
           this.tracker = null;
@@ -120,7 +128,7 @@ export class InputManager {
         return true;
       },
       (err: unknown) => {
-        this.status = isDenied(err) ? 'denied' : 'error';
+        this._status = isDenied(err) ? 'denied' : 'error';
         this.error = err instanceof Error ? `${err.name}: ${err.message}` : String(err);
         console.warn('[input] camera unavailable, using mouse fallback:', err);
         this.ensureMouse();
@@ -144,8 +152,11 @@ export class InputManager {
   /**
    * Synthetic hands. Non-null frames override every other source until
    * inject(null). Entries are merged onto defaults (present: true unless
-   * given); an entry's array index is NOT its slot — give `slot` explicitly,
-   * otherwise hands are matched to slots by position like camera hands.
+   * given). Slots: an explicit `slot` wins; otherwise hands that appear take
+   * slots in array order, and hands already present keep their slot by
+   * nearest-position matching (like camera hands), so order may change freely.
+   * Missing landmarks are generated from the gesture; missing vx/vy are
+   * derived from consecutive positions.
    * pinchStart/pinchEnd are derived from consecutive pinch values unless given
    * (given values apply to the first update() after this call only).
    */
@@ -160,7 +171,7 @@ export class InputManager {
     this.tracker = null;
     this.mouse?.dispose();
     this.mouse = null;
-    if (this.status === 'running') this.status = 'idle';
+    if (this.status === 'running') this._status = 'idle';
   }
 
   /** Call once per animation frame. */
@@ -175,8 +186,8 @@ export class InputManager {
 
     // --- camera -------------------------------------------------------------
     let camHands: [HandState, HandState] | null = null;
-    if (this.tracker && this.status === 'running') {
-      const det = this.tracker.detect(now);
+    if ((this.tracker && this.status === 'running') || this.externalFeed) {
+      const det = this.tracker?.detect(now) ?? null;
       if (det) this.ingestDetections(det.hands, now, det.frameTime, det.aspect);
       else for (const p of this.processors) if (p.present && now - p.lastSeen > this.gestureConfig.graceMs) p.miss(now);
       camHands = this.cameraHands(now, dtMs);
@@ -202,6 +213,7 @@ export class InputManager {
    * tests and alternative trackers can drive the camera pipeline directly.
    */
   ingestDetections(raw: RawHand[], nowMs: number, frameMs: number = nowMs, aspect = 16 / 9): void {
+    if (!this.tracker) this.externalFeed = true;
     const dets = this.dedupe(raw.filter((h) => h.landmarks.length >= 21)).slice(0, 2);
     const cursors = dets.map((h) => rawCursor(h.landmarks, this.mapping));
     const slots = assignSlots(
@@ -274,6 +286,9 @@ export class InputManager {
       if (taken.size === 1) {
         const other: Slot = taken.has(0) ? 1 : 0;
         slotOf[free[0]] = other;
+      } else if (taken.size === 0 && !prevPos[0] && !prevPos[1]) {
+        // Nothing to match against: array order.
+        free.forEach((i, k) => { slotOf[i] = k as Slot; });
       } else if (taken.size === 0) {
         const pos = free.map((i) => ({ x: frames[i].x ?? 0.5, y: frames[i].y ?? 0.5 }));
         const assigned = assignSlots(prevPos, pos, Infinity);
@@ -305,8 +320,10 @@ export class InputManager {
         h.landmarks = screenHandLandmarks(h.x, h.y, poseFor(h.gesture), { handedness: h.handedness, scale: h.palmSize || SYNTHETIC_PALM });
       }
       // Edge flags: explicit values only count on the first update after inject().
-      h.pinchStart = this.injectFresh && f.pinchStart !== undefined ? f.pinchStart : false;
-      h.pinchEnd = this.injectFresh && f.pinchEnd !== undefined ? f.pinchEnd : false;
+      const fresh = this.injectFresh;
+      this.edgeGiven[s] = { start: fresh && f.pinchStart !== undefined, end: fresh && f.pinchEnd !== undefined };
+      h.pinchStart = fresh && f.pinchStart !== undefined ? f.pinchStart : false;
+      h.pinchEnd = fresh && f.pinchEnd !== undefined ? f.pinchEnd : false;
       result[s] = h;
     });
     return result;
@@ -314,14 +331,10 @@ export class InputManager {
 
   /** Computes edge flags against the previous output and stores this output. */
   private finalize(hands: [HandState, HandState], source: InputFrame['source'], trackingFps: number): InputFrame {
-    const explicit = source === 'synthetic' && this.injectFresh ? this.injected : null;
     for (const s of SLOTS) {
       let h = hands[s];
       const prev = this.prevOut[s];
-      const given = explicit?.find((f, i) => (f.slot ?? -1) === s || (f.slot === undefined && explicit.length === 1 && i === 0 && s === h.slot && h.present));
-      const startGiven = given?.pinchStart !== undefined;
-      const endGiven = given?.pinchEnd !== undefined;
-
+      const given = source === 'synthetic' ? this.edgeGiven[s] : NO_EDGES;
       if (!h.present && prev.present && prev.pinch) {
         // Hand vanished mid-pinch: emit one last present frame carrying the
         // release so consumers that skip absent hands still see pinchEnd.
@@ -330,14 +343,15 @@ export class InputManager {
           gesture: 'none', fist: false, open: false, vx: 0, vy: 0,
         };
       } else {
-        if (!startGiven) h.pinchStart = h.pinch && !(prev.present && prev.pinch);
-        if (!endGiven) h.pinchEnd = !h.pinch && prev.present && prev.pinch;
+        if (!given.start) h.pinchStart = h.pinch && !(prev.present && prev.pinch);
+        if (!given.end) h.pinchEnd = !h.pinch && prev.present && prev.pinch;
         if (!h.present) { h.pinch = false; h.pinchStart = false; }
       }
       hands[s] = h;
       this.prevOut[s] = h;
     }
     this.injectFresh = false;
+    this.edgeGiven = [NO_EDGES, NO_EDGES];
     return { hands, source, trackingFps };
   }
 

@@ -158,12 +158,3 @@ export function flowerGeometry(): THREE.BufferGeometry {
     { geo: new THREE.OctahedronGeometry(0.06, 0), color: '#ffffff', m: mat(0, 0.17, 0, 0, 0, 0, 1, 0.6, 1) },
   ]);
 }
-
-export function cloudGeometry(): THREE.BufferGeometry {
-  return merge([
-    { geo: new THREE.IcosahedronGeometry(1.0, 0), color: '#ffffff', m: mat(0, 0, 0, 0, 0, 0, 1.3, 0.7, 1) },
-    { geo: new THREE.IcosahedronGeometry(0.75, 0), color: '#ffffff', m: mat(1.15, -0.1, 0.2, 0.4, 0.3, 0, 1.2, 0.65, 1) },
-    { geo: new THREE.IcosahedronGeometry(0.65, 0), color: '#f3f6fb', m: mat(-1.1, -0.15, -0.1, 0.2, 1.1, 0, 1.2, 0.6, 1) },
-    { geo: new THREE.IcosahedronGeometry(0.55, 0), color: '#ffffff', m: mat(0.4, 0.35, -0.3, 0.7, 0.2, 0.3) },
-  ]);
-}
