@@ -722,7 +722,7 @@ function tick(now: number) {
     if (now >= handTimer) { handTimer = now + 1000 / 20; net.sendHand(encodeHands(frame)); }
   }
   oppViz.update(online ? decodeHands() : [remoteHandStates[0], remoteHandStates[1]].map((h) => ({ ...h, present: false })), stage, rawDt, stage.t, ['hover', 'hover'], [0, 0], ground);
-  if (!NO_RENDER) stage.render(rawDt);
+  stage.render(rawDt, !NO_RENDER);
   if (recorder.recording && world) {
     recorder.setBars(world.sim.strength().map((_, f) => factionColor(f)), world.sim.strength());
     recorder.capture(canvas, input.status === 'running' ? video : null, frame);
@@ -746,6 +746,7 @@ window.__godhand = {
   get state() { return state; },
   get world() { return world; },
   get commander() { return commander; },
+  tutorialCounters: () => tutorial.counters,
   setState: (s: State) => setState(s),
   startLevel: (id: number) => startLevel(id >= 100 ? skirmish(id) : LEVELS[id - 1]),
   skipCountdown: () => setState('play'),

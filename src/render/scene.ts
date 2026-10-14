@@ -147,8 +147,9 @@ export class Stage {
 
   get quality() { return this.qLevel; }
 
-  render(dt: number) {
-    this.adaptQuality();
+  /** Advance camera/effects; `draw` = false skips the GPU work (headless tests). */
+  render(dt: number, draw = true) {
+    if (draw) this.adaptQuality();
     this.t += dt;
     if (Math.abs(this.zoomCur - this.zoom) > 0.0005) {
       this.zoomCur += (this.zoom - this.zoomCur) * Math.min(1, dt * 2.5);
@@ -170,6 +171,7 @@ export class Stage {
     this.ink.mat.uniforms.uTime.value = this.t;
     const f = this.ink.mat.uniforms.uFlash;
     f.value *= Math.exp(-dt * 7);
-    this.composer.render(dt);
+    this.camera.updateMatrixWorld();
+    if (draw) this.composer.render(dt);
   }
 }
