@@ -16,7 +16,7 @@ for (let i = 0; i < 2; i++) {
   const p = await ctx.newPage();
   p.on('pageerror', (e) => console.log(`[${i}] pageerror`, e.message));
   p.on('console', (m) => { if (m.type() === 'error') console.log(`[${i}] err`, m.text().slice(0, 200)); });
-  await p.goto(url + '?lowres&nettest&norender', { waitUntil: 'domcontentloaded' });
+  await p.goto(url + (process.env.RENDER ? '?lowres&nettest' : '?lowres&nettest&norender'), { waitUntil: 'domcontentloaded' });
   pages.push(p);
 }
 await pages[0].waitForTimeout(1500);
@@ -51,6 +51,14 @@ await host.waitForTimeout(8000);
 const hostView = await host.evaluate(() => { const s = window.__godhand.world.sim; return { units1: s.units.filter((u) => u.faction === 1).length, t: s.time.toFixed(1), cap1: s.bases[1].troops.toFixed(1) }; });
 const guestView = await guest.evaluate(() => { const s = window.__godhand.world.sim; return { units1: s.units.filter((u) => u.faction === 1).length, t: s.time.toFixed(1), cap1: s.bases[1].troops.toFixed(1) }; });
 console.log('host view', hostView, 'guest view', guestView);
+if (process.env.RENDER) {
+  // host shows a hand pinching over the middle of the map; guest should see it in red
+  for (let k = 0; k < 6; k++) { await host.evaluate((k) => window.__godhand.input.inject([{ present: true, x: 0.45 + k * 0.01, y: 0.45, pinch: k > 2 }]), k); await host.waitForTimeout(400); }
+  await guest.evaluate(() => window.__godhand.input.inject([{ present: true, x: 0.2, y: 0.6, open: true, gesture: 'open' }]));
+  await guest.waitForTimeout(4000);
+  await guest.screenshot({ path: `${out}/net-guest-view.png` });
+  await host.screenshot({ path: `${out}/net-host-view.png` });
+}
 // host smites guest's capital
 await host.evaluate(() => { const s = window.__godhand.world.sim; s.manaOf[0] = 100; s.smite(s.bases[1].x, s.bases[1].z, 0); });
 await host.waitForTimeout(1500);

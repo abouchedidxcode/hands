@@ -162,7 +162,7 @@ function loadWorld(level: Level, attract: boolean, mode: 'host' | 'guest' | null
   world = { level, sim, ais, attract };
   commander.reset();
   commander.faction = me;
-  hud.setup(factions, mode ? `ONLINE DUEL · YOU ARE ${me === 0 ? 'BLUE' : 'RED'}` : level.tutorial ? 'TRAINING' : `${level.id < 100 ? 'LEVEL ' + level.id : 'SKIRMISH'} · ${level.name.toUpperCase()}`);
+  hud.setup(factions, mode ? `ONLINE DUEL · YOU ARE ${me === 0 ? 'BLUE' : 'RED'}` : level.tutorial ? 'TRAINING' : `${level.id < 100 ? 'LEVEL ' + level.id : 'SKIRMISH'} · ${level.name.toUpperCase()}`, me, mode ? ['Rival', 'Rival'] : undefined);
 }
 
 function attract() {

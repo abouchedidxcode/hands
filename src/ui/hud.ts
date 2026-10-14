@@ -64,14 +64,15 @@ export class Hud {
 
   show(on: boolean) { this.root.classList.toggle('hidden', !on); this.barW = 0; }
 
-  setup(factions: number, levelName: string) {
+  /** `me` = the local player's faction; `names` overrides segment labels (online duels). */
+  setup(factions: number, levelName: string, me = 0, names?: string[]) {
     this.power.innerHTML = '';
     this.segs = [];
     for (let f = 0; f < factions; f++) {
       const d = document.createElement('div');
-      d.className = `seg${f === 0 ? ' me' : ''}`;
+      d.className = `seg${f === me ? ' me' : ''}`;
       d.style.setProperty('--fc', factionColor(f));
-      d.innerHTML = `<b>${f === 0 ? 'YOU' : FACTION_NAMES[f].toUpperCase()}</b><span></span>`;
+      d.innerHTML = `<b>${f === me ? 'YOU' : (names?.[f] ?? FACTION_NAMES[f]).toUpperCase()}</b><span></span>`;
       d.style.flexGrow = '1';
       this.power.appendChild(d);
       this.segs.push({ el: d, name: d.querySelector('b')!, num: d.querySelector('span')! });
