@@ -157,7 +157,7 @@ export class InputManager {
    * nearest-position matching (like camera hands), so order may change freely.
    * Missing landmarks are generated from the gesture; missing vx/vy are
    * derived from consecutive positions.
-   * grabStart/grabEnd are derived from consecutive pinch values unless given
+   * grabStart/grabEnd are derived from consecutive grab values unless given
    * (given values apply to the first update() after this call only).
    */
   inject(frames: Partial<HandState>[] | null): void {
