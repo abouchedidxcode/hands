@@ -20,7 +20,7 @@ varying vec4 vInfo;
 void main() {
   vec4 w = modelMatrix * vec4(position, 1.0);
   vW = w.xyz;
-  vN = normalize(mat3(modelMatrix) * normal);
+  vN = mat3(modelMatrix) * normal;
   vInfo = aInfo;
   gl_Position = projectionMatrix * viewMatrix * w;
 }`;
@@ -55,7 +55,7 @@ void main() {
   float edge = smoothstep(thr - 0.1, thr, dn) * step(uDissolve, 0.995);
 
   vec3 V = normalize(cameraPosition - vW);
-  vec3 N = normalize(vN);
+  vec3 N = vN / max(length(vN), 1e-4); // normalize(0) is NaN on some GPUs
   float ndv = clamp(dot(N, V), 0.0, 1.0);
   float fres = pow(1.0 - ndv, 2.6);
   float lam = clamp(dot(N, uLight) * 0.5 + 0.5, 0.0, 1.0);

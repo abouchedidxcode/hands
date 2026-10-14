@@ -736,7 +736,7 @@ requestAnimationFrame(tick);
 // Debug / test hooks
 declare global { interface Window { __godhand: unknown } }
 window.__godhand = {
-  input, stage, audio, recorder,
+  input, stage, audio, recorder, handViz,
   get state() { return state; },
   get world() { return world; },
   get commander() { return commander; },
