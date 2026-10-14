@@ -1,7 +1,8 @@
 /**
  * Mouse fallback → a HandState for slot 0.
- *   left button      = grab (closed fist)
- *   right button     = middle finger (smite under the cursor); context menu suppressed
+ *   left button      = fist (grab / carry)
+ *   right button     = middle finger (smite; context menu suppressed); releasing
+ *                      it yields an 'open' hand for ≥1 update (and ≥100 ms)
  *   Shift held       = open palm
  * Fake landmarks are generated around the cursor so the 3D hand still renders.
  */
@@ -31,7 +32,7 @@ export class MouseInput {
   private openFrames = 0;
   private lastSampleT = -Infinity;
   // Visual blend amounts 0..1.
-  private aPinch = 0; private aFist = 0; private aOpen = 0;
+  private aMid = 0; private aFist = 0; private aOpen = 0;
   private aspect = 16 / 9;
   private off: (() => void)[] = [];
 
@@ -105,28 +106,27 @@ export class MouseInput {
     }
 
     // Latches make sub-frame clicks visible for one sample.
-    const grab = this.left || this.leftLatch;
-    const middle = !grab && (this.right || this.rightLatch);
+    const fist = this.left || this.leftLatch;
+    const middle = !fist && (this.right || this.rightLatch);
     this.leftLatch = this.rightLatch = false;
     let open = false;
-    if (grab) this.openFrames = 0;
+    if (fist) this.openFrames = 0;
     else if (!middle) {
       if (this.openFrames > 0 || now < this.openUntil) { open = true; this.openFrames = 0; }
       else if (this.shift) open = true;
     }
-    const gesture: Gesture = grab ? 'grab' : middle ? 'middle' : open ? 'open' : 'none';
+    const gesture: Gesture = fist ? 'fist' : middle ? 'middle' : open ? 'open' : 'none';
 
     const k = dt > 0 ? 1 - Math.exp(-dt / POSE_TAU) : 1;
-    this.aPinch += k * ((middle ? 1 : 0) - this.aPinch);
-    this.aFist += k * ((grab ? 1 : 0) - this.aFist);
+    this.aMid += k * ((middle ? 1 : 0) - this.aMid);
+    this.aFist += k * ((fist ? 1 : 0) - this.aFist);
     this.aOpen += k * ((open ? 1 : 0) - this.aOpen);
 
     const x = clamp01(this.x), y = clamp01(this.y);
     Object.assign(h, {
       present: true, handedness: 'Right',
       x, y, vx: this.vx, vy: this.vy,
-      grab, grabStrength: grab ? 1 : this.aFist,
-      middle, open, gesture,
+      fist, middle, open, gesture,
       landmarks: screenHandLandmarks(x, y, this.pose(), { aspect: this.aspect, scale: MOUSE_PALM_SIZE }),
       palmSize: MOUSE_PALM_SIZE,
       lastSeen: now,
@@ -138,7 +138,7 @@ export class MouseInput {
     const base = POSES.relaxed.curl;
     const curl = base.map((c, i) => {
       let v = c + (POSES.fist.curl[i] - c) * this.aFist;
-      v += (POSES.middle.curl[i] - v) * this.aPinch; // aPinch tracks the middle-finger pose
+      v += (POSES.middle.curl[i] - v) * this.aMid;
       v += (POSES.open.curl[i] - v) * this.aOpen;
       return v;
     }) as HandPose['curl'];

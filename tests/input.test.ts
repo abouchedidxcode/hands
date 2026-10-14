@@ -1,28 +1,22 @@
 import { describe, expect, it } from 'vitest';
 import { OneEuroFilter, OneEuroFilter2D } from '../src/input/oneEuro';
 import {
-  assignSlots, classifyGesture, DEFAULT_GESTURE, DEFAULT_MAPPING, fromScreen, GestureDebouncer, grabStrengthOf,
-  HandProcessor, isMiddle, LM, mapLandmarks, measureHand, nextGrab, rawCursor, toScreen, userHandedness,
-  type RawHand,
+  assignSlots, classifyGesture, DEFAULT_GESTURE, DEFAULT_MAPPING, fromScreen, GestureDebouncer, HandProcessor,
+  mapLandmarks, measureHand, nextPinch, pinchStrengthOf, rawCursor, toScreen, userHandedness,
+  type HandMetrics, type RawHand,
 } from '../src/input/gestures';
-import { POSES, rawHandAt, screenHandLandmarks, type FakeHandOpts, type HandPose } from '../src/input/fakeHand';
+import { POSES, rawHandAt, screenHandLandmarks, type HandPose } from '../src/input/fakeHand';
 import { InputManager } from '../src/input/inputManager';
-import type { Gesture, HandState, InputFrame, Landmark } from '../src/input/types';
+import type { HandState, InputFrame } from '../src/input/types';
 
 const ASPECT = 16 / 9;
-const KNUCKLES = [LM.INDEX_MCP, LM.MIDDLE_MCP, LM.RING_MCP, LM.PINKY_MCP];
-
-const metricsOf = (h: RawHand, aspect = ASPECT) => measureHand(h.landmarks, aspect);
-/** Instantaneous classification of one detection (grab hysteresis state given). */
-const classify = (h: RawHand, grabActive = false, aspect = ASPECT): Gesture => {
-  const m = metricsOf(h, aspect);
-  return classifyGesture(m, nextGrab(grabActive, m));
+const classify = (h: RawHand, pinchActive = false, aspect = ASPECT) => {
+  const m = measureHand(h.landmarks, aspect);
+  return classifyGesture(m, nextPinch(pinchActive, m));
 };
-const grabs = (pose: HandPose, o: FakeHandOpts = {}, active = false) =>
-  nextGrab(active, metricsOf(rawHandAt(0.5, 0.5, pose, o), o.aspect ?? ASPECT));
 
-/** All four fingers curled by `c` (0 = straight, 1 = fist); thumb curl `thumb`. */
-const curlPose = (c: number, thumb = c): HandPose => ({ curl: [thumb, c, c, c, c], pinch: 0 });
+/** Pose with fingers closing toward a pinch (0 = open, 1 = pinched). */
+const pinchPose = (p: number): HandPose => ({ curl: [0, 0.5 * p, 0.35 * p, 0.4 * p, 0.45 * p], pinch: p });
 
 /** A hand whose WRIST stays fixed at the position of an open hand at (sx, sy) while the pose changes. */
 function anchoredHand(sx: number, sy: number, pose: HandPose): RawHand {
@@ -32,11 +26,6 @@ function anchoredHand(sx: number, sy: number, pose: HandPose): RawHand {
   h.landmarks = h.landmarks.map((l) => ({ x: l.x - w.x + ref.x, y: l.y - w.y + ref.y, z: l.z }));
   return h;
 }
-
-const centroid = (l: Landmark[] | { x: number; y: number }[], idx = KNUCKLES) => ({
-  x: idx.reduce((a, i) => a + l[i].x, 0) / idx.length,
-  y: idx.reduce((a, i) => a + l[i].y, 0) / idx.length,
-});
 
 const fakeVideo = {} as HTMLVideoElement;
 
@@ -73,7 +62,6 @@ describe('OneEuroFilter', () => {
 describe('mirroring / remap', () => {
   it('mirrors x and maps the central region onto 0..1', () => {
     const m = DEFAULT_MAPPING;
-    expect(m).toMatchObject({ x0: 0.2, x1: 0.8, y0: 0.16, y1: 0.76 });
     const c = toScreen(0.5, (m.y0 + m.y1) / 2);
     expect(c.x).toBeCloseTo(0.5);
     expect(c.y).toBeCloseTo(0.5);
@@ -95,18 +83,14 @@ describe('mirroring / remap', () => {
     expect(userHandedness('Left', { ...DEFAULT_MAPPING, flipHandedness: false })).toBe('Left');
   });
 
-  it('places the raw cursor at the knuckle centroid in screen space, for any pose', () => {
-    for (const pose of [POSES.open, POSES.fist, POSES.middle, POSES.point]) {
-      const h = rawHandAt(0.25, 0.6, pose);
-      const c = rawCursor(h.landmarks);
-      expect(c.x).toBeCloseTo(0.25, 5);
-      expect(c.y).toBeCloseTo(0.6, 5);
-      const sl = mapLandmarks(h.landmarks);
-      expect(sl).toHaveLength(21);
-      const k = centroid(sl);
-      expect(k.x).toBeCloseTo(0.25, 5);
-      expect(k.y).toBeCloseTo(0.6, 5);
-    }
+  it('places the raw cursor at the thumb/index midpoint in screen space', () => {
+    const h = rawHandAt(0.25, 0.6, POSES.open);
+    const c = rawCursor(h.landmarks);
+    expect(c.x).toBeCloseTo(0.25, 5);
+    expect(c.y).toBeCloseTo(0.6, 5);
+    const sl = mapLandmarks(h.landmarks);
+    expect(sl).toHaveLength(21);
+    expect((sl[4].x + sl[8].x) / 2).toBeCloseTo(0.25, 5);
   });
 
   it('a right hand appears with its thumb toward screen-left', () => {
@@ -119,122 +103,75 @@ describe('mirroring / remap', () => {
 
 // ---------------------------------------------------------------------------
 describe('gesture classification', () => {
-  const variants: { name: string; o: FakeHandOpts }[] = [
+  const variants = [
     { name: 'right', o: {} },
-    { name: 'left', o: { handedness: 'Left' } },
+    { name: 'left', o: { handedness: 'Left' as const } },
     { name: 'small/far', o: { scale: 0.09 } },
-    { name: '4:3 camera', o: { aspect: 4 / 3 } },
-    { name: 'rotated ccw', o: {} },
+    { name: '4:3 camera', o: { aspect: 4 / 3 }, aspect: 4 / 3 },
   ];
   for (const v of variants) {
-    const roll = v.name === 'rotated ccw' ? 0.5 : undefined;
-    const at = (pose: HandPose) => rawHandAt(0.5, 0.5, roll ? { ...pose, roll } : pose, v.o);
-    const a = v.o.aspect ?? ASPECT;
-    it(`classifies open / grab / middle / point (${v.name})`, () => {
-      expect(classify(at(POSES.open), false, a)).toBe('open');
-      expect(classify(at(POSES.fist), false, a)).toBe('grab');
-      expect(classify(at(POSES.middle), false, a)).toBe('middle');
-      expect(classify(at(POSES.point), false, a)).toBe('point');
-      expect(nextGrab(false, metricsOf(at(POSES.open), a))).toBe(false);
-      expect(nextGrab(false, metricsOf(at(POSES.fist), a))).toBe(true);
+    it(`classifies open / fist / point / pinch / middle (${v.name})`, () => {
+      const a = v.aspect ?? ASPECT;
+      expect(classify(rawHandAt(0.5, 0.5, POSES.open, v.o), false, a)).toBe('open');
+      expect(classify(rawHandAt(0.5, 0.5, POSES.fist, v.o), false, a)).toBe('fist');
+      expect(classify(rawHandAt(0.5, 0.5, POSES.point, v.o), false, a)).toBe('point');
+      expect(classify(rawHandAt(0.5, 0.5, POSES.pinch, v.o), false, a)).toBe('pinch');
+      expect(classify(rawHandAt(0.5, 0.5, POSES.middle, v.o), false, a)).toBe('middle');
     });
   }
 
   it('is rotation tolerant', () => {
-    for (const roll of [-0.6, 0.5, 1.2]) {
+    for (const roll of [-0.6, 0.5]) {
       expect(classify(rawHandAt(0.5, 0.5, { ...POSES.open, roll }))).toBe('open');
-      expect(classify(rawHandAt(0.5, 0.5, { ...POSES.fist, roll }))).toBe('grab');
-      expect(classify(rawHandAt(0.5, 0.5, { ...POSES.middle, roll }))).toBe('middle');
-      expect(classify(rawHandAt(0.5, 0.5, { ...POSES.point, roll }))).toBe('point');
+      expect(classify(rawHandAt(0.5, 0.5, { ...POSES.fist, roll }))).toBe('fist');
+      expect(classify(rawHandAt(0.5, 0.5, { ...POSES.pinch, roll }))).toBe('pinch');
     }
   });
 
-  it('a fist grabs whatever the thumb does', () => {
-    for (const thumb of [0, 0.5, 1]) {
-      expect(grabs(curlPose(1, thumb)), `thumb ${thumb}`).toBe(true);
-      expect(grabs(curlPose(0.7, thumb)), `loose fist, thumb ${thumb}`).toBe(true);
-    }
+  it('a fist is never a pinch even though thumb and index tips are close', () => {
+    const m = measureHand(rawHandAt(0.5, 0.5, POSES.fist).landmarks, ASPECT);
+    expect(m.pinchRatio).toBeLessThan(DEFAULT_GESTURE.pinchOn); // the trap
+    expect(nextPinch(false, m)).toBe(false);
+    expect(classifyGesture(m, false)).toBe('fist');
   });
 
-  it('the middle-finger salute is "middle" and never a grab (thumb tucked, half-raised or out)', () => {
-    const poses: HandPose[] = [
-      POSES.middle,
-      { curl: [0.4, 1, 0, 1, 1], pinch: 0 },      // thumb half raised
-      { curl: [0, 1, 0, 1, 1], pinch: 0 },        // thumb out
-      { curl: [0.7, 0.75, 0.1, 0.8, 0.8], pinch: 0 }, // sloppy: others loosely curled, middle slightly bent
-    ];
-    for (const pose of poses) {
-      for (const o of [{}, { handedness: 'Left' as const }, { scale: 0.09 }]) {
-        const m = metricsOf(rawHandAt(0.5, 0.5, pose, o));
-        expect(isMiddle(m), JSON.stringify(pose.curl)).toBe(true);
-        expect(nextGrab(false, m)).toBe(false);
-        // Even from a held grab: raising the middle finger releases it.
-        expect(nextGrab(true, m)).toBe(false);
-        expect(classifyGesture(m, nextGrab(false, m))).toBe('middle');
-      }
-    }
-  });
-
-  it('pointing is not a grab, even though three fingers are curled', () => {
-    const m = metricsOf(rawHandAt(0.5, 0.5, POSES.point));
-    expect(m.curledCount).toBeGreaterThanOrEqual(3); // the trap
-    expect(nextGrab(false, m)).toBe(false);
-    expect(nextGrab(true, m)).toBe(false); // extending the index releases a held grab
-    expect(classifyGesture(m, false)).toBe('point');
-  });
-
-  it('a relaxed / half-curled hand does not grab', () => {
-    expect(grabs(POSES.relaxed)).toBe(false);
-    expect(classify(rawHandAt(0.5, 0.5, POSES.relaxed))).not.toBe('grab');
-    for (const c of [0.3, 0.4, 0.5]) {
-      for (const thumb of [0, 0.5]) expect(grabs(curlPose(c, thumb)), `curl ${c}`).toBe(false);
-    }
-    expect(grabs(POSES.pinch)).toBe(false);
-  });
-
-  it('grab strength rises from ~0 (open) to 1 (fist) as the hand closes', () => {
-    const s = [0, 0.25, 0.5, 0.75, 1].map((c) => grabStrengthOf(metricsOf(rawHandAt(0.5, 0.5, curlPose(c)))));
-    expect(s[0]).toBeLessThan(0.25);
-    for (let i = 1; i < s.length; i++) expect(s[i]).toBeGreaterThanOrEqual(s[i - 1]);
-    expect(s[4]).toBe(1);
-    for (const v of s) { expect(v).toBeGreaterThanOrEqual(0); expect(v).toBeLessThanOrEqual(1); }
+  it('pinch strength goes 0 → 1 as fingers close', () => {
+    const s = [0, 0.5, 1].map((p) => pinchStrengthOf(measureHand(rawHandAt(0.5, 0.5, pinchPose(p)).landmarks, ASPECT).pinchRatio));
+    expect(s[0]).toBeLessThan(0.05);
+    expect(s[1]).toBeGreaterThan(s[0]);
+    expect(s[2]).toBeGreaterThan(0.95);
   });
 });
 
 // ---------------------------------------------------------------------------
-describe('grab hysteresis', () => {
-  it('turns on only when clearly closed, and off only when clearly opened', () => {
+describe('pinch hysteresis', () => {
+  const metrics = (pinchRatio: number): HandMetrics => ({
+    palmScale: 1, pinchRatio, curl: [1, 1.2, 1.2, 1.2], extended: [true, false, false, false, false],
+    extendedCount: 1, curledCount: 0, tipContact: true,
+  });
+
+  it('turns on below pinchOn and off only above pinchOff', () => {
     let on = false;
     const seq: [number, boolean][] = [
-      [0, false], [0.4, false], [0.5, false], [1, true], [0.6, true], [0.4, true], [0.5, true],
-      [0.2, false], [0.4, false], [0.5, false], [0.8, true], [0, false],
+      [0.8, false], [0.35, false], [0.27, true], [0.35, true], [0.41, true], [0.30, true], [0.43, false], [0.35, false], [0.2, true],
     ];
-    for (const [c, want] of seq) {
-      on = nextGrab(on, metricsOf(rawHandAt(0.5, 0.5, curlPose(c, 0.5))));
-      expect(on, `curl ${c}`).toBe(want);
+    for (const [r, want] of seq) {
+      on = nextPinch(on, metrics(r));
+      expect(on, `ratio ${r}`).toBe(want);
     }
   });
 
-  it('loosening a held fist slightly keeps the grab', () => {
-    for (const c of [0.8, 0.6, 0.45, 0.4]) expect(grabs(curlPose(c, 0.6), {}, true), `curl ${c}`).toBe(true);
-    // ... but those loose poses would not START a grab.
-    expect(grabs(curlPose(0.45, 0.6))).toBe(false);
-    // Opening fully releases.
-    expect(grabs(POSES.open, {}, true)).toBe(false);
-    expect(grabs(POSES.relaxed, {}, true)).toBe(false);
-  });
-
-  it('does not chatter when the hand hovers around the on-threshold (processor)', () => {
+  it('does not chatter when the ratio hovers around the on-threshold (processor)', () => {
     const p = new HandProcessor();
     let t = 0, toggles = 0, last = false;
-    const curls = [0, 0, 0.3, 0.45, 0.5, 0.6, 0.5, 0.56, 0.47, 0.58, 0.5, 0.55, 0.45, 0.6, 0.42, 0.55];
-    for (const c of curls) {
+    const amounts = [0, 0, 0.5, 0.8, 0.9, 0.95, 0.85, 0.9, 0.8, 0.9, 0.85, 0.9, 0.8, 0.88];
+    for (const a of amounts) {
       t += 33;
-      p.update(anchoredHand(0.5, 0.5, curlPose(c, 0.5)), t);
-      if (p.grab !== last) { toggles++; last = p.grab; }
+      p.update(anchoredHand(0.5, 0.5, pinchPose(a)), t);
+      if (p.pinch !== last) { toggles++; last = p.pinch; }
     }
     expect(toggles).toBe(1);
-    expect(p.grab).toBe(true);
+    expect(p.pinch).toBe(true);
   });
 });
 
@@ -243,109 +180,62 @@ describe('gesture debounce', () => {
   it('ignores single-frame flicker but follows real changes within ~2 frames', () => {
     const d = new GestureDebouncer();
     let t = 0;
-    const push = (g: Gesture) => d.push(g, (t += 33));
-    push('open'); push('open'); push('open');
-    expect(d.stable).toBe('open');
-    push('point'); // single bad frame
-    push('open');
-    expect(d.stable).toBe('open');
+    const push = (g: Parameters<GestureDebouncer['push']>[0]) => d.push(g, (t += 33));
+    push('fist'); push('fist'); push('fist');
+    expect(d.stable).toBe('fist');
+    push('open'); // single bad frame
+    push('fist');
+    expect(d.stable).toBe('fist');
     push('none'); push('none'); // brief transitional frames
-    expect(d.stable).toBe('open');
-    push('middle');
-    expect(d.stable).toBe('open');
-    push('middle');
-    expect(d.stable).toBe('middle'); // open → middle in 2 frames (smite)
+    expect(d.stable).toBe('fist');
+    push('open');
+    expect(d.stable).toBe('fist');
+    push('open');
+    expect(d.stable).toBe('open'); // fist → open in 2 frames (smite)
   });
 
-  it('grab bypasses the debounce, and leaving it drops to none at once', () => {
+  it('pinch bypasses the debounce', () => {
     const d = new GestureDebouncer();
     d.push('open', 0); d.push('open', 40);
-    expect(d.stable).toBe('open');
-    expect(d.push('grab', 80)).toBe('grab');
+    expect(d.push('pinch', 80)).toBe('pinch');
     expect(d.push('open', 120)).toBe('none');
-    expect(d.push('open', 160)).toBe('open');
-  });
-
-  it('a single grab frame inside an open stream still registers immediately', () => {
-    const d = new GestureDebouncer();
-    for (let i = 0; i < 4; i++) d.push('open', i * 33);
-    expect(d.push('grab', 140)).toBe('grab');
   });
 });
 
 // ---------------------------------------------------------------------------
 describe('HandProcessor', () => {
-  it('cursor stays put when the hand closes into a fist in place (knuckle cursor)', () => {
+  it('suppresses the cursor jump while the pinch closes and opens', () => {
     const p = new HandProcessor();
     let t = 0;
-    let cursorMax = 0;
+    let naiveMax = 0, cursorMax = 0;
     const ref = { x: 0, y: 0 };
-    const seq = [...Array(10).fill(0), 0.2, 0.45, 0.7, 0.9, 1, 1, 1, 1, 1, 0.6, 0.3, 0, ...Array(10).fill(0)];
-    let grabbed = false;
-    seq.forEach((c, i) => {
+    const seq = [...Array(10).fill(0), 0.3, 0.6, 0.85, 1, 1, 1, 1, 1, 0.6, 0.3, 0, ...Array(10).fill(0)];
+    seq.forEach((a, i) => {
       t += 33;
-      const h = anchoredHand(0.5, 0.5, curlPose(c));
+      const h = anchoredHand(0.5, 0.5, pinchPose(a));
       p.update(h, t);
-      grabbed ||= p.grab;
       if (i === 9) { ref.x = p.x; ref.y = p.y; }
-      if (i >= 10) cursorMax = Math.max(cursorMax, Math.hypot(p.x - ref.x, p.y - ref.y));
+      if (i >= 10) {
+        const rc = rawCursor(h.landmarks);
+        naiveMax = Math.max(naiveMax, Math.hypot(rc.x - 0.5, rc.y - 0.5));
+        cursorMax = Math.max(cursorMax, Math.hypot(p.x - ref.x, p.y - ref.y));
+      }
     });
-    expect(grabbed).toBe(true);
-    expect(p.grab).toBe(false);
-    expect(cursorMax).toBeLessThan(0.02);
-    // Sanity: a fingertip-based (thumb/index midpoint) cursor would have jumped a lot.
-    const tl0 = anchoredHand(0.5, 0.5, POSES.open).landmarks, tl1 = anchoredHand(0.5, 0.5, POSES.fist).landmarks;
-    const tipOf = (l: typeof tl0) => toScreen((l[LM.THUMB_TIP].x + l[LM.INDEX_TIP].x) / 2, (l[LM.THUMB_TIP].y + l[LM.INDEX_TIP].y) / 2);
-    expect(Math.hypot(tipOf(tl0).x - tipOf(tl1).x, tipOf(tl0).y - tipOf(tl1).y)).toBeGreaterThan(0.1);
+    expect(naiveMax).toBeGreaterThan(0.02); // the synthetic hand really does "jump"
+    expect(cursorMax).toBeLessThan(naiveMax * 0.2);
   });
 
-  it('cursor stays put when flipping the middle finger in place', () => {
+  it('follows the hand while pinched (rigid to the palm)', () => {
     const p = new HandProcessor();
     let t = 0;
-    for (let i = 0; i < 10; i++) p.update(anchoredHand(0.4, 0.6, POSES.open), (t += 33));
-    const ref = { x: p.x, y: p.y };
-    let max = 0;
-    for (let i = 0; i < 10; i++) {
-      p.update(anchoredHand(0.4, 0.6, POSES.middle), (t += 33));
-      max = Math.max(max, Math.hypot(p.x - ref.x, p.y - ref.y));
-      expect(p.grab).toBe(false);
-    }
-    expect(max).toBeLessThan(0.02);
-    expect(p.snapshot().middle).toBe(true);
-    expect(p.gesture).toBe('middle');
-  });
-
-  it('grab registers on the first fist frame; point / middle need the debounce', () => {
-    const p = new HandProcessor();
-    let t = 0;
-    for (let i = 0; i < 4; i++) p.update(rawHandAt(0.5, 0.5, POSES.open), (t += 33));
-    expect(p.gesture).toBe('open');
-    p.update(rawHandAt(0.5, 0.5, POSES.fist), (t += 33));
-    expect(p.grab).toBe(true);
-    expect(p.gesture).toBe('grab');
-    // Fist → middle finger: grab ends at once, 'middle' follows within ~2 frames.
-    p.update(rawHandAt(0.5, 0.5, POSES.middle), (t += 33));
-    expect(p.grab).toBe(false);
-    p.update(rawHandAt(0.5, 0.5, POSES.middle), (t += 33));
-    p.update(rawHandAt(0.5, 0.5, POSES.middle), (t += 33));
-    expect(p.gesture).toBe('middle');
-    for (let i = 0; i < 3; i++) p.update(rawHandAt(0.5, 0.5, POSES.point), (t += 33));
-    expect(p.gesture).toBe('point');
-    expect(p.grab).toBe(false);
-  });
-
-  it('follows the hand while grabbing', () => {
-    const p = new HandProcessor();
-    let t = 0;
-    for (let i = 0; i < 5; i++) p.update(rawHandAt(0.3, 0.5, POSES.fist), (t += 33));
-    expect(p.grab).toBe(true);
-    for (let i = 0; i <= 30; i++) p.update(rawHandAt(0.3 + i * 0.01, 0.5, POSES.fist), (t += 33));
-    expect(p.grab).toBe(true);
+    for (let i = 0; i < 5; i++) p.update(rawHandAt(0.3, 0.5, POSES.pinch), (t += 33));
+    expect(p.pinch).toBe(true);
+    for (let i = 0; i <= 30; i++) p.update(rawHandAt(0.3 + i * 0.01, 0.5, POSES.pinch), (t += 33));
+    expect(p.pinch).toBe(true);
     expect(p.x).toBeGreaterThan(0.55);
     expect(p.x).toBeLessThan(0.61);
     expect(p.vx).toBeGreaterThan(0.2); // ≈ 0.3 screen/s
     expect(p.vx).toBeLessThan(0.4);
-    expect(p.grabStrength).toBe(1);
   });
 
   it('measures velocity in screen units/s and resists frame-time spikes', () => {
@@ -366,38 +256,25 @@ describe('HandProcessor', () => {
     expect(p.x).toBe(1);
     expect(p.y).toBe(0);
     expect(p.landmarks).toHaveLength(21);
-    // Visual landmarks are anchored on the cursor (knuckle centroid).
-    const k = centroid(p.landmarks);
-    expect(k.x).toBeCloseTo(1, 5);
-    expect(k.y).toBeCloseTo(0, 5);
+    // Visual landmarks are anchored on the cursor.
+    expect((p.landmarks[4].x + p.landmarks[8].x) / 2).toBeCloseTo(1, 5);
   });
 
-  it('keeps a grab alive through a short dropout (grace) and drops it after', () => {
+  it('keeps a pinch alive through a short dropout (grace) and drops it after', () => {
     const p = new HandProcessor();
     let t = 0;
-    for (let i = 0; i < 4; i++) p.update(rawHandAt(0.5, 0.5, POSES.fist), (t += 33));
-    expect(p.grab).toBe(true);
+    for (let i = 0; i < 4; i++) p.update(rawHandAt(0.5, 0.5, POSES.pinch), (t += 33));
+    expect(p.pinch).toBe(true);
     expect(p.miss(t + 40)).toBe(true);
     expect(p.miss(t + 100)).toBe(true);
-    expect(p.grab).toBe(true);
-    p.update(rawHandAt(0.5, 0.5, POSES.fist), t + 110);
-    expect(p.grab).toBe(true);
+    expect(p.pinch).toBe(true);
+    p.update(rawHandAt(0.5, 0.5, POSES.pinch), t + 110);
+    expect(p.pinch).toBe(true);
     t += 110;
     expect(p.miss(t + 100)).toBe(true);
     expect(p.miss(t + 200)).toBe(false);
     expect(p.present).toBe(false);
-    expect(p.grab).toBe(false);
-    expect(p.snapshot().grabStrength).toBe(0);
-  });
-
-  it('a hand re-acquired after a long gap does not inherit the old grab', () => {
-    const p = new HandProcessor();
-    let t = 0;
-    for (let i = 0; i < 4; i++) p.update(rawHandAt(0.5, 0.5, POSES.fist), (t += 33));
-    expect(p.grab).toBe(true);
-    // Loosely closed (would keep a held grab, but cannot start one) after > reacquireMs.
-    p.update(rawHandAt(0.5, 0.5, curlPose(0.45)), t + DEFAULT_GESTURE.reacquireMs + 50);
-    expect(p.grab).toBe(false);
+    expect(p.pinch).toBe(false);
   });
 
   it('reports user-facing handedness with a stable vote', () => {
@@ -451,27 +328,9 @@ describe('InputManager (camera pipeline via ingestDetections)', () => {
     }
     expect(f!.source).toBe('camera');
     expect(f!.hands[1].gesture).toBe('open');
-    expect(f!.hands[1].grab).toBe(false);
-    expect(f!.hands[0].gesture).toBe('grab');
-    expect(f!.hands[0].grab).toBe(true);
+    expect(f!.hands[0].gesture).toBe('fist');
     expect(f!.hands[1].handedness).toBe('Left');
     expect(f!.hands[0].handedness).toBe('Right');
-  });
-
-  it('a hand that closes into a fist is matched to its own slot (raw cursor = processor cursor)', () => {
-    const im = new InputManager({ video: fakeVideo, renderSmoothingMs: 0 });
-    let t = 0;
-    const step = (hands: RawHand[]) => { t += 33; im.ingestDetections(hands, t); return im.update(t); };
-    let f = step([rawHandAt(0.35, 0.5, POSES.open), rawHandAt(0.65, 0.5, POSES.open, { handedness: 'Left' })]);
-    const s0x = f.hands[0].x;
-    for (let i = 0; i < 6; i++) {
-      f = step([rawHandAt(0.35, 0.5, POSES.fist), rawHandAt(0.65, 0.5, POSES.middle, { handedness: 'Left' })]);
-    }
-    expect(f.hands[0].x).toBeCloseTo(s0x, 2);
-    const fist = f.hands.find((h) => h.grab)!;
-    const mid = f.hands.find((h) => h.middle)!;
-    expect(fist.x).toBeCloseTo(0.35, 2);
-    expect(mid.x).toBeCloseTo(0.65, 2);
   });
 
   it('a single hand keeps its slot when the other leaves; a newcomer takes the free slot', () => {
@@ -492,42 +351,40 @@ describe('InputManager (camera pipeline via ingestDetections)', () => {
     expect(f.hands[0].x).toBeLessThan(0.3);
   });
 
-  it('grab edges are true for exactly one update(), even at render rate > camera rate', () => {
+  it('pinch edges are true for exactly one update(), even at render rate > camera rate', () => {
     const im = new InputManager({ video: fakeVideo });
     let t = 0;
     const starts: number[] = [], ends: number[] = [];
-    const curls = [0, 0, 0, 0.5, 1, 1, 1, 1, 0.5, 0, 0, 0];
+    const amounts = [0, 0, 0, 0.5, 1, 1, 1, 1, 0.5, 0, 0, 0];
     let frame = 0;
-    for (const c of curls) {
+    for (const a of amounts) {
       t += 33;
-      im.ingestDetections([anchoredHand(0.5, 0.5, curlPose(c))], t);
+      im.ingestDetections([anchoredHand(0.5, 0.5, pinchPose(a))], t);
       for (let k = 0; k < 4; k++) { // 4 render frames per camera frame
-        const h = im.update(t + k * 8).hands[0];
-        if (h.grabStart) { starts.push(frame); expect(h.grab).toBe(true); }
-        if (h.grabEnd) { ends.push(frame); expect(h.grab).toBe(false); }
+        const f = im.update(t + k * 8);
+        if (f.hands[0].pinchStart) starts.push(frame);
+        if (f.hands[0].pinchEnd) ends.push(frame);
         frame++;
       }
     }
-    expect(starts).toEqual([16]); // first fully-closed camera frame
+    expect(starts).toHaveLength(1);
     expect(ends).toHaveLength(1);
-    expect(ends[0]).toBe(36); // held through the half-open frame, released when open
+    expect(ends[0]).toBeGreaterThan(starts[0]);
   });
 
-  it('a hand lost mid-grab emits a present frame with grabEnd, then disappears', () => {
+  it('a hand lost mid-pinch emits a present frame with pinchEnd, then disappears', () => {
     const im = new InputManager({ video: fakeVideo });
     let t = 0;
-    for (let i = 0; i < 4; i++) { t += 33; im.ingestDetections([rawHandAt(0.5, 0.5, POSES.fist)], t); im.update(t); }
+    for (let i = 0; i < 4; i++) { t += 33; im.ingestDetections([rawHandAt(0.5, 0.5, POSES.pinch)], t); im.update(t); }
     const frames: HandState[] = [];
     for (let i = 0; i < 10; i++) { t += 33; im.ingestDetections([], t); frames.push(im.update(t).hands[0]); }
-    // Within grace (~120 ms) still grabbing.
-    expect(frames[0].grab).toBe(true);
-    expect(frames[2].grab).toBe(true);
-    const endIdx = frames.findIndex((h) => h.grabEnd);
+    // Within grace (~120 ms) still pinching.
+    expect(frames[0].pinch).toBe(true);
+    expect(frames[2].pinch).toBe(true);
+    const endIdx = frames.findIndex((h) => h.pinchEnd);
     expect(endIdx).toBeGreaterThan(2);
     expect(frames[endIdx].present).toBe(true);
-    expect(frames[endIdx].grab).toBe(false);
-    expect(frames.filter((h) => h.grabEnd)).toHaveLength(1);
-    expect(frames.filter((h) => h.grabStart)).toHaveLength(0);
+    expect(frames.filter((h) => h.pinchEnd)).toHaveLength(1);
     expect(frames[endIdx + 1].present).toBe(false);
   });
 });
@@ -536,53 +393,28 @@ describe('InputManager (camera pipeline via ingestDetections)', () => {
 describe('InputManager.inject', () => {
   it('merges partial hands onto defaults', () => {
     const im = new InputManager({ video: fakeVideo });
-    im.inject([{ x: 0.3, y: 0.4, grab: true }]);
+    im.inject([{ x: 0.3, y: 0.4, fist: true }]);
     const f = im.update(0);
     expect(f.source).toBe('synthetic');
     const h = f.hands[0];
     expect(h.present).toBe(true);
     expect(h.slot).toBe(0);
-    expect(h.gesture).toBe('grab');
-    expect(h.grabStrength).toBe(1);
-    expect(h.grabStart).toBe(true);
+    expect(h.gesture).toBe('fist');
     expect(h.landmarks).toHaveLength(21);
     expect(f.hands[1].present).toBe(false);
     im.inject([{ x: 0.3, y: 0.4, gesture: 'open' }]);
-    const h2 = im.update(16).hands[0];
-    expect(h2.open).toBe(true);
-    expect(h2.grab).toBe(false);
-    expect(h2.grabEnd).toBe(true);
-    im.inject([{ x: 0.3, y: 0.4, gesture: 'middle' }]);
-    const h3 = im.update(32).hands[0];
-    expect(h3.middle).toBe(true);
-    expect(h3.grab).toBe(false);
-    im.inject([{ x: 0.3, y: 0.4, middle: true }]);
-    expect(im.update(48).hands[0].gesture).toBe('middle');
+    expect(im.update(16).hands[0].open).toBe(true);
   });
 
-  it('generated landmarks match the injected gesture', () => {
-    const im = new InputManager({ video: fakeVideo });
-    for (const [g, want] of [['grab', 'grab'], ['middle', 'middle'], ['open', 'open'], ['point', 'point']] as const) {
-      im.inject([{ x: 0.5, y: 0.5, gesture: g }]);
-      const l = im.update(0).hands[0].landmarks;
-      // Screen landmarks → metrics (aspect 1: screenHandLandmarks already divides x by the aspect).
-      const m = measureHand(l.map((p) => ({ x: p.x * ASPECT, y: p.y, z: p.z })), 1);
-      expect(classifyGesture(m, nextGrab(false, m)), g).toBe(want);
-      const k = centroid(l);
-      expect(k.x).toBeCloseTo(0.5, 6);
-      expect(k.y).toBeCloseTo(0.5, 6);
-    }
-  });
-
-  it('derives grabStart / grabEnd from consecutive grab values, once each', () => {
+  it('derives pinchStart / pinchEnd from consecutive pinch values, once each', () => {
     const im = new InputManager({ video: fakeVideo });
     const seq = [false, false, true, true, true, false, false];
     const log: [boolean, boolean][] = [];
     let t = 0;
-    for (const grab of seq) {
-      im.inject([{ x: 0.5, y: 0.5, grab }]);
+    for (const pinch of seq) {
+      im.inject([{ x: 0.5, y: 0.5, pinch }]);
       // Several update() calls per injected frame: edges still fire once.
-      for (let k = 0; k < 3; k++) { const h = im.update((t += 16)).hands[0]; log.push([h.grabStart, h.grabEnd]); }
+      for (let k = 0; k < 3; k++) { const h = im.update((t += 16)).hands[0]; log.push([h.pinchStart, h.pinchEnd]); }
     }
     expect(log.filter(([s]) => s)).toHaveLength(1);
     expect(log.filter(([, e]) => e)).toHaveLength(1);
@@ -592,11 +424,11 @@ describe('InputManager.inject', () => {
 
   it('honours explicit edge flags only on the first update after inject()', () => {
     const im = new InputManager({ video: fakeVideo });
-    im.inject([{ x: 0.5, y: 0.5, grab: true, grabStart: false }]);
-    expect(im.update(0).hands[0].grabStart).toBe(false);
-    im.inject([{ x: 0.5, y: 0.5, grab: true, grabStart: true }]);
-    expect(im.update(16).hands[0].grabStart).toBe(true);
-    expect(im.update(32).hands[0].grabStart).toBe(false);
+    im.inject([{ x: 0.5, y: 0.5, pinch: true, pinchStart: false }]);
+    expect(im.update(0).hands[0].pinchStart).toBe(false);
+    im.inject([{ x: 0.5, y: 0.5, pinch: true, pinchStart: true }]);
+    expect(im.update(16).hands[0].pinchStart).toBe(true);
+    expect(im.update(32).hands[0].pinchStart).toBe(false);
   });
 
   it('keeps slots by position when injected order changes, and derives velocity', () => {
@@ -619,35 +451,23 @@ describe('InputManager.inject', () => {
 
   it('inject(null) returns to the normal sources', () => {
     const im = new InputManager({ video: fakeVideo });
-    im.inject([{ x: 0.5, y: 0.5, grab: true }]);
+    im.inject([{ x: 0.5, y: 0.5, pinch: true }]);
     im.update(0);
     im.inject(null);
     const f = im.update(16);
     expect(f.source).not.toBe('synthetic');
-    // The synthetic grab is released cleanly.
-    expect(f.hands[0].grabEnd).toBe(true);
-    expect(f.hands[0].grab).toBe(false);
+    // The synthetic pinch is released cleanly.
+    expect(f.hands[0].pinchEnd).toBe(true);
     expect(im.update(32).hands[0].present).toBe(false);
   });
 });
 
 describe('fake hand landmarks', () => {
-  it('screen landmarks put the knuckle centroid on the cursor', () => {
-    for (const pose of Object.values(POSES)) {
-      const l = screenHandLandmarks(0.4, 0.6, pose);
-      expect(l).toHaveLength(21);
-      const k = centroid(l);
-      expect(k.x).toBeCloseTo(0.4, 6);
-      expect(k.y).toBeCloseTo(0.6, 6);
-      expect(l[0].y).toBeGreaterThan(0.6); // wrist below the knuckles
-    }
-  });
-
-  it('the knuckles do not move when the fingers curl', () => {
-    const a = rawHandAt(0.5, 0.5, POSES.open).landmarks, b = rawHandAt(0.5, 0.5, POSES.fist).landmarks;
-    for (const i of [LM.WRIST, ...KNUCKLES]) {
-      expect(b[i].x).toBeCloseTo(a[i].x, 9);
-      expect(b[i].y).toBeCloseTo(a[i].y, 9);
-    }
+  it('screen landmarks put the tip midpoint on the cursor', () => {
+    const l = screenHandLandmarks(0.4, 0.6, POSES.pinch);
+    expect(l).toHaveLength(21);
+    expect((l[4].x + l[8].x) / 2).toBeCloseTo(0.4, 6);
+    expect((l[4].y + l[8].y) / 2).toBeCloseTo(0.6, 6);
+    expect(l[0].y).toBeGreaterThan(0.6); // wrist below the fingers
   });
 });

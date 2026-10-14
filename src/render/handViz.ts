@@ -17,14 +17,9 @@ const DEPTH_K = 9;
  * (wrist→middle-MCP) tends toward PALM_TARGET screen heights. SIZE_EXP < 1 keeps
  * a little of the "closer to the camera = bigger" feel.
  */
-const PALM_TARGET = 0.14;
-/** 1 = the drawn palm is always PALM_TARGET tall, however close the real hand is to the webcam. */
-const SIZE_EXP = 1;
-const SCALE_MIN = 0.08, SCALE_MAX = 1.2;
-/** Hard limit on how far (screen units) any joint may sit from the cursor. */
-const MAX_REACH_X = 0.22, MAX_REACH_Y = 0.32;
-/** World units a joint moves toward the camera per unit of MediaPipe z (depth relief, kept subtle). */
-const DEPTH_WORLD = 4;
+const PALM_TARGET = 0.165;
+const SIZE_EXP = 0.8;
+const SCALE_MIN = 0.4, SCALE_MAX = 1.2;
 /** Afterimages for the swat streak. */
 const GHOSTS = 4;
 const GHOST_DT = 0.035;
@@ -75,10 +70,6 @@ class OneHand {
   // smoothed reticle params
   private rRing = 0.55; private rWidth = 0.07; private rDot = 0.06; private rFill = 0; private rDanger = 0; private rSpin = 0.8;
   private tmp = new THREE.Vector3();
-  private anchor = new THREE.Vector3();
-  private right = new THREE.Vector3();
-  private upv = new THREE.Vector3();
-  private back = new THREE.Vector3();
 
   constructor(slot: number) {
     this.pal = PALETTES[slot];
@@ -159,28 +150,14 @@ class OneHand {
       const kT = THREE.MathUtils.clamp(Math.pow(PALM_TARGET / Math.max(ps, 0.02), SIZE_EXP), SCALE_MIN, SCALE_MAX);
       this.scale = this.hasShape && this.vis > 0.05 ? approach(this.scale, kT, 5, dt) : kT;
       const k = this.scale;
-      // Place the hand in camera space around the cursor: anchor = the cursor's point at hand
-      // height, joints = anchor + (screen offset × view size at that distance) along the camera's
-      // right/up axes, plus a little depth relief. Its on-screen size then depends only on the
-      // (capped) screen offsets — never on raw depth values or on where far rays meet the ground.
-      const cam = stage.camera;
-      const anchor = this.anchor;
-      if (!stage.screenToGround(THREE.MathUtils.clamp(cx, 0, 1), THREE.MathUtils.clamp(cy, 0, 1), HAND_H, anchor)) anchor.set(0, HAND_H, 0);
-      const dist = cam.position.distanceTo(anchor);
-      const viewH = 2 * dist * Math.tan(THREE.MathUtils.degToRad(cam.fov) / 2);
-      const viewW = viewH * aspect;
-      this.right.setFromMatrixColumn(cam.matrixWorld, 0);
-      this.upv.setFromMatrixColumn(cam.matrixWorld, 1);
-      this.back.setFromMatrixColumn(cam.matrixWorld, 2);
       for (let i = 0; i < 21; i++) {
         const l = L[i];
-        const dx = THREE.MathUtils.clamp((l.x - cx) * k, -MAX_REACH_X, MAX_REACH_X);
-        const dy = THREE.MathUtils.clamp((l.y - cy) * k, -MAX_REACH_Y, MAX_REACH_Y);
-        const dz = THREE.MathUtils.clamp(-l.z * k * DEPTH_WORLD, -1.5, 1.5);
-        this.pts[i].copy(anchor)
-          .addScaledVector(this.right, dx * viewW)
-          .addScaledVector(this.upv, -dy * viewH)
-          .addScaledVector(this.back, dz);
+        // each joint is placed on the ray through its (cursor-scaled) screen position,
+        // so the thumb/index midpoint stays exactly under the cursor
+        const sx = cx + (l.x - cx) * k;
+        const sy = cy + (l.y - cy) * k;
+        const hh = THREE.MathUtils.clamp(HAND_H - l.z * DEPTH_K * k, 1.8, 7);
+        if (!stage.screenToGround(sx, sy, hh, this.pts[i])) this.pts[i].set(0, hh, 0);
       }
       const swell = 1 + this.armedAmt * 0.05 * pulse + this.heat * 0.03;
       for (let f = 0; f < 5; f++) this.boost[f] = ONES[f] * swell;

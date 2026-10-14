@@ -116,4 +116,4 @@ export function filterEvents(events: GameEvent[]): GameEvent[] {
 }
 
 /** Hand pose for the opponent's ghost hand: world-space points (x, z, height). */
-export interface RemoteHand { p: boolean; g: number; pts: number[] }   // g: 0 none 1 pinch 2 fist 3 open
+export interface RemoteHand { p: boolean; g: number; pts: number[] }   // g: 0 none 1 fist 2 middle 3 open
