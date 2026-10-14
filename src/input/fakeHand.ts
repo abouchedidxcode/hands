@@ -25,8 +25,8 @@ export const POSES = {
   relaxed: { curl: [0.2, 0.25, 0.3, 0.35, 0.4], pinch: 0 } as HandPose,
   fist: { curl: [1, 1, 1, 1, 1], pinch: 0 } as HandPose,
   point: { curl: [1, 0, 1, 1, 1], pinch: 0 } as HandPose,
+  middle: { curl: [1, 1, 0, 1, 1], pinch: 0 } as HandPose,
   pinch: { curl: [0, 0.5, 0.35, 0.4, 0.45], pinch: 1 } as HandPose,
-  middle: { curl: [0.7, 1, 0, 1, 1], pinch: 0 } as HandPose,
 };
 
 type V3 = [number, number, number];
@@ -90,11 +90,8 @@ export function handShape(pose: HandPose): V3[] {
   return out;
 }
 
-/** The cursor anchor: knuckle centroid (matches HandProcessor). */
-const tipMid = (s: V3[]): [number, number] => {
-  const k = [LM.INDEX_MCP, LM.MIDDLE_MCP, LM.RING_MCP, LM.PINKY_MCP];
-  return [k.reduce((a, i) => a + s[i][0], 0) / 4, k.reduce((a, i) => a + s[i][1], 0) / 4];
-};
+const tipMid = (s: V3[]): [number, number] =>
+  [(s[LM.THUMB_TIP][0] + s[LM.INDEX_TIP][0]) / 2, (s[LM.THUMB_TIP][1] + s[LM.INDEX_TIP][1]) / 2];
 
 export interface FakeHandOpts {
   handedness?: 'Left' | 'Right';
@@ -105,8 +102,8 @@ export interface FakeHandOpts {
 }
 
 /**
- * Screen-space landmarks (HandState.landmarks) with the knuckle centroid
- * (the cursor) exactly on (x, y).
+ * Screen-space landmarks (HandState.landmarks) with the thumb/index tip
+ * midpoint exactly on (x, y).
  */
 export function screenHandLandmarks(x: number, y: number, pose: HandPose, o: FakeHandOpts = {}): Landmark[] {
   const scale = o.scale ?? 0.14, aspect = o.aspect ?? 16 / 9;

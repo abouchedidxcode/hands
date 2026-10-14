@@ -25,6 +25,8 @@ interface Ctl {
   fired: boolean;
   denied: boolean;
   mode: HandMode;
+  /** Fist state last frame (grab edges). */
+  fist: boolean;
   g: THREE.Vector3;
   hasG: boolean;
 }
@@ -41,7 +43,7 @@ export interface CommanderEvents {
 
 const newCtl = (): Ctl => ({
   dragging: false, sel: [], hover: null, target: null, midT: 0, fired: false, denied: false,
-  mode: 'idle', g: new THREE.Vector3(), hasG: false,
+  mode: 'idle', fist: false, g: new THREE.Vector3(), hasG: false,
 });
 
 /**
@@ -114,7 +116,7 @@ export class Commander {
       this.clapSpeed = Math.max(closing, this.clapSpeed - dt * 6);
     }
     this.clapPrevD = d;
-    const busy = a.grab || b.grab || a.middle || b.middle || this.ctl.some((c) => c.dragging);
+    const busy = a.fist || b.fist || a.middle || b.middle || this.ctl.some((c) => c.dragging);
     if (!busy && this.allowRally && this.clapCooldown <= 0 && d < 0.17 && this.clapSpeed > 0.9) {
       this.clapCooldown = 1.2;
       this.clapSpeed = 0;
@@ -125,6 +127,9 @@ export class Commander {
   private updateHand(i: number, h: HandState, sim: Sim, dt: number, t: number, arrows: DragArrows) {
     const c = this.ctl[i];
     const me = this.faction;
+    const grab = h.present && h.fist;
+    const grabStart = grab && !c.fist;
+    c.fist = grab;
     c.hasG = h.present && !!this.stage.screenToGround(h.x, h.y, 0.25, c.g);
     if (!h.present || !c.hasG) {
       if (c.dragging && c.sel.length) this.ev.cancel(i);
@@ -157,7 +162,7 @@ export class Commander {
     c.midT = 0; c.fired = false; c.denied = false;
 
     // ---------------------------------------------------------------- grab → carry → open to send
-    if (h.grabStart && this.allowSend) {
+    if (grabStart && this.allowSend) {
       c.dragging = true;
       c.sel = [];
       this.ev.grab(i);
@@ -165,7 +170,7 @@ export class Commander {
       if (first) { c.sel.push(first.id); this.ev.select(i, first); }
     }
 
-    if (c.dragging && h.grab) {
+    if (c.dragging && grab) {
       const pass = this.nearest(sim, c.g.x, c.g.z, SWEEP_PAD, (b) => b.owner === me);
       if (pass && !c.sel.includes(pass.id)) { c.sel.push(pass.id); this.ev.select(i, pass); }
       // where would the army go if the hand opened now?

@@ -33,15 +33,15 @@ console.log('1', await coach());
 
 const cap = await scr(0);
 await inject([H(cap.x, cap.y)]);
-await inject([H(cap.x, cap.y, { grab: true })]);
+await inject([H(cap.x, cap.y, { fist: true, gesture: 'fist' })]);
 console.log('2', await coach());
 const target = await page.evaluate(() => {
   const s = window.__godhand.world.sim, me = s.bases[0];
   return s.bases.filter((b) => b.owner === -1).sort((a, b) => Math.hypot(a.x - me.x, a.z - me.z) - Math.hypot(b.x - me.x, b.z - me.z))[0].id;
 });
 const t = await scr(target);
-for (let k = 1; k <= 6; k++) await inject([H(cap.x + (t.x - cap.x) * k / 6, cap.y + (t.y - cap.y) * k / 6, { grab: true })], 1);
-await inject([H(t.x, t.y, { grab: false })]);
+for (let k = 1; k <= 6; k++) await inject([H(cap.x + (t.x - cap.x) * k / 6, cap.y + (t.y - cap.y) * k / 6, { fist: true, gesture: 'fist' })], 1);
+await inject([H(t.x, t.y, { open: true, gesture: 'open' })]);
 console.log('3', await coach());
 for (let i = 0; i < 20 && (await coach()).includes('CONQUER'); i++) { await page.evaluate(() => window.__godhand.fastForward(1)); await frames(1); }
 console.log('4', await coach());
@@ -55,14 +55,14 @@ const v = await scr(target), w = await scr(t2);
 Object.assign(cap, await scr(0)); // camera zoom has settled since the start
 await inject([H(cap.x, cap.y)], 8);
 console.log('  pre', await page.evaluate(() => { const c = window.__godhand.commander.ctl[0]; return JSON.stringify({ hover: c.hover?.id, g: [c.g.x.toFixed(1), c.g.z.toFixed(1)], mode: c.mode }); }), JSON.stringify(cap));
-await inject([H(cap.x, cap.y, { grab: true })]);
+await inject([H(cap.x, cap.y, { fist: true, gesture: 'fist' })]);
 console.log('  post', await page.evaluate(() => { const c = window.__godhand.commander.ctl[0]; return JSON.stringify({ hover: c.hover?.id, sel: c.sel, mode: c.mode }); }));
-for (let k = 1; k <= 5; k++) await inject([H(cap.x + (v.x - cap.x) * k / 5, cap.y + (v.y - cap.y) * k / 5, { grab: true })], 1);
+for (let k = 1; k <= 5; k++) await inject([H(cap.x + (v.x - cap.x) * k / 5, cap.y + (v.y - cap.y) * k / 5, { fist: true, gesture: 'fist' })], 1);
 const dbg = () => page.evaluate(() => { const c = window.__godhand.commander.ctl[0], s = window.__godhand.world.sim; return JSON.stringify({ sel: c.sel, hover: c.hover?.id, drag: c.dragging, own: s.bases.filter((b) => b.owner === 0).map((b) => [b.id, Math.floor(b.troops)]) }); });
 console.log('  at v', await dbg());
-for (let k = 1; k <= 5; k++) await inject([H(v.x + (w.x - v.x) * k / 5, v.y + (w.y - v.y) * k / 5, { grab: true })], 1);
+for (let k = 1; k <= 5; k++) await inject([H(v.x + (w.x - v.x) * k / 5, v.y + (w.y - v.y) * k / 5, { fist: true, gesture: 'fist' })], 1);
 console.log('  at w', await dbg());
-await inject([H(w.x, w.y, { grab: false })]);
+await inject([H(w.x, w.y, { open: true, gesture: 'open' })]);
 console.log('5', await coach());
 
 // smite on the enemy capital: raise the middle finger and hold it briefly

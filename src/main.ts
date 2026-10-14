@@ -427,13 +427,12 @@ function encodeHands(frame: InputFrame): RemoteHand[] {
     if (!h.present || h.landmarks.length !== 21) { out.push({ p: false, g: 0, pts: [] }); continue; }
     const pts: number[] = [];
     for (const l of h.landmarks) {
-      // clamp like HandViz does, so rays always meet the ground (no stray far points)
-      const g = stage.screenToGround(Math.min(1.15, Math.max(-0.15, l.x)), Math.min(1.15, Math.max(-0.15, l.y)), 0.25, v3);
+      const g = stage.screenToGround(l.x, l.y, 0.25, v3);
       pts.push(g ? Math.round(g.x * 50) / 50 : 0, g ? Math.round(g.z * 50) / 50 : 0, Math.round(l.z * 1000) / 1000);
     }
     const c = stage.screenToGround(h.x, h.y, 0.25, v3);
     pts.push(c ? Math.round(c.x * 50) / 50 : 0, c ? Math.round(c.z * 50) / 50 : 0);
-    out.push({ p: true, g: h.grab ? 1 : h.middle ? 2 : h.open ? 3 : 0, pts });
+    out.push({ p: true, g: h.fist ? 1 : h.middle ? 2 : h.open ? 3 : 0, pts });
   }
   return out;
 }
@@ -453,7 +452,7 @@ function decodeHands(): [HandState, HandState] {
     h.present = true;
     h.landmarks = lm;
     h.x = c.x; h.y = c.y;
-    h.grab = r.g === 1; h.middle = r.g === 2; h.open = r.g === 3;
+    h.fist = r.g === 1; h.middle = r.g === 2; h.open = r.g === 3;
   }
   return remoteHandStates;
 }
@@ -687,8 +686,7 @@ function tick(now: number) {
       audio.setCharge(charge > 0 ? charge : 0);
       for (let i = 0; i < 2; i++) {
         const m = commander.modes[i];
-        // middle-finger smite: crackle on the raised fingertip
-        if (m === 'charge' || m === 'armed') fx.charge(v3.copy(handViz.hands[i].pts[12]), ch[i]);
+        if (m === 'charge' || m === 'armed') fx.charge(handViz.palm(i, v3), ch[i]);
       }
       if (!commander.modes.some((m) => m === 'charge' || m === 'armed')) fx.charge(null, 0);
     } else fx.charge(null, 0);
