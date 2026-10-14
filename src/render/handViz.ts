@@ -169,7 +169,8 @@ class OneHand {
     // ------------------------------------------------ hand shading
     const u = this.u;
     u.uTime.value += dt;
-    u.uVis.value = Math.min(1, this.vis * 1.1);
+    // while pinch-dragging, ghost the hand so the target base and its count stay readable
+    u.uVis.value = Math.min(1, this.vis * 1.1) * (1 - 0.6 * this.pinchAmt);
     u.uDissolve.value = THREE.MathUtils.smoothstep(this.vis, 0, 0.85);
     u.uPinch.value = this.pinchAmt * (0.85 + 0.15 * Math.sin(t * 24));
     u.uHeat.value = this.heat;
@@ -192,9 +193,9 @@ class OneHand {
     if (this.spark.visible) {
       const span = this.pts[0].distanceTo(this.pts[9]);
       this.spark.position.copy(this.pts[4]).add(this.pts[8]).multiplyScalar(0.5);
-      this.spark.scale.setScalar(span * (0.7 + 0.25 * Math.sin(t * 37) + 0.1 * Math.sin(t * 13)) * sp);
+      this.spark.scale.setScalar(span * (0.35 + 0.12 * Math.sin(t * 37) + 0.05 * Math.sin(t * 13)) * sp);
       this.sparkMat.rotation = t * 1.7;
-      this.sparkMat.opacity = sp;
+      this.sparkMat.opacity = sp * 0.7;
       this.sparkMat.color.copy(this.pal.rim).multiplyScalar(1.3);
     }
 
