@@ -261,6 +261,7 @@ function startLevel(level: Level) {
   if (level.tutorial) tutorial.start(world!.sim, commander);
   else { commander.allowSmite = commander.allowSwat = commander.allowSend = true; }
   setState('countdown');
+  stage.snapZoom(0.55);
 }
 
 async function start() {

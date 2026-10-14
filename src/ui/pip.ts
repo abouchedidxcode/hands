@@ -26,30 +26,50 @@ export function drawPip(canvas: HTMLCanvasElement, frame: InputFrame, input: { v
   const px = (sx: number) => ox + (m.x0 + sx * (m.x1 - m.x0)) * dw;
   const py = (sy: number) => oy + (m.y0 + sy * (m.y1 - m.y0)) * dh;
 
-  // active zone
-  c.strokeStyle = 'rgba(160,240,255,0.35)';
-  c.setLineDash([5, 5]);
-  c.lineWidth = 1.5;
-  c.strokeRect(px(0), py(0), px(1) - px(0), py(1) - py(0));
-  c.setLineDash([]);
+  // tracking status for the CSS frame (status dot, raise-screen overlay)
+  const n = frame.hands.filter((hh) => hh.present).length;
+  const host = canvas.parentElement;
+  if (host && host.dataset.hands !== String(n)) host.dataset.hands = String(n);
+  const big = w > 320;
+  const k = big ? 1.6 : 1;
+
+  // active zone: corner brackets (where your hand maps onto the whole screen)
+  const zx0 = px(0), zy0 = py(0), zx1 = px(1), zy1 = py(1);
+  const L0 = Math.min(zx1 - zx0, zy1 - zy0) * 0.14;
+  c.strokeStyle = n ? 'rgba(160,240,255,0.55)' : 'rgba(255,255,255,0.4)';
+  c.lineWidth = 2 * k;
+  c.lineCap = 'round';
+  c.beginPath();
+  for (const [x, y, sx, sy] of [[zx0, zy0, 1, 1], [zx1, zy0, -1, 1], [zx0, zy1, 1, -1], [zx1, zy1, -1, -1]]) {
+    c.moveTo(x + sx * L0, y); c.lineTo(x, y); c.lineTo(x, y + sy * L0);
+  }
+  c.stroke();
 
   frame.hands.forEach((hand, i) => {
     if (!hand.present || hand.landmarks.length !== 21) return;
     const L = hand.landmarks;
     c.strokeStyle = COLORS[i];
     c.shadowColor = COLORS[i];
-    c.shadowBlur = 8;
-    c.lineWidth = 2.5;
+    c.shadowBlur = 8 * k;
+    c.lineWidth = 2.5 * k;
     c.beginPath();
     for (const [a, b] of BONES) { c.moveTo(px(L[a].x), py(L[a].y)); c.lineTo(px(L[b].x), py(L[b].y)); }
     c.stroke();
     c.fillStyle = '#ffffff';
-    for (const p of L) { c.beginPath(); c.arc(px(p.x), py(p.y), 2.2, 0, Math.PI * 2); c.fill(); }
+    for (const p of L) { c.beginPath(); c.arc(px(p.x), py(p.y), 2.2 * k, 0, Math.PI * 2); c.fill(); }
     c.shadowBlur = 0;
     // gesture label
     const label = hand.pinch ? 'PINCH' : hand.fist ? 'FIST' : hand.open ? 'OPEN' : hand.gesture.toUpperCase();
-    c.font = '700 11px Rubik, system-ui, sans-serif';
+    c.font = `700 ${Math.round(11 * k)}px Rubik, system-ui, sans-serif`;
+    c.textAlign = 'center';
+    const lx = px(L[0].x), ly = py(L[0].y) + 18 * k;
+    const tw = c.measureText(label).width + 12 * k;
+    c.fillStyle = 'rgba(4,14,22,0.75)';
+    c.beginPath();
+    c.roundRect(lx - tw / 2, ly - 12 * k, tw, 17 * k, 8 * k);
+    c.fill();
     c.fillStyle = COLORS[i];
-    c.fillText(label, px(L[0].x) - 14, py(L[0].y) + 16);
+    c.fillText(label, lx, ly);
+    c.textAlign = 'start';
   });
 }

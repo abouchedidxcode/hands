@@ -51,6 +51,10 @@ export const MANA = {
   swatCostPerUnit: 1,
   swatRadius: 1.25,
   swatSpeed: 1.6,          // screen widths / s
+  rallyCost: 50,           // RALLY (clap both hands)
+  rallyDuration: 6,        // seconds
+  rallySpeed: 1.6,         // player unit speed multiplier while active
+  rallyGrowth: 2.5,        // player base growth multiplier while active (still capped)
 };
 
 export const BOARD = { width: 44, depth: 26 };

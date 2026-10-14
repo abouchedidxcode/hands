@@ -55,6 +55,7 @@ export type GameEvent =
   | { type: 'arrowKill'; x: number; z: number; faction: number }
   | { type: 'smite'; x: number; z: number; kills: number; radius: number }
   | { type: 'fling'; x: number; z: number; vx: number; vz: number; faction: number }
+  | { type: 'rally'; until: number }
   | { type: 'eliminated'; faction: number }
   | { type: 'end'; winner: number };
 
@@ -64,6 +65,7 @@ export interface Stats {
   kills: number;
   smites: number;
   swats: number;
+  rallies: number;
   sent: number;
   peakArmy: number;
 }

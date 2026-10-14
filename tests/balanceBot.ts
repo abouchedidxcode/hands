@@ -40,6 +40,8 @@ export interface Skill {
   aimErr: number;
   swatP: number;
   defendP: number;
+  /** probability (per decision) to consider a RALLY clap when mana allows */
+  rallyP: number;
   /** probability a decision tick is wasted (looking at the webcam, misdetected pinch, ...) */
   idleP: number;
 }
@@ -48,24 +50,25 @@ export const SKILLS: Record<'novice' | 'average' | 'skilled', Skill> = {
   novice: {
     name: 'novice', hands: 1, interval: [1.5, 2.6], offhandSlow: 0, react: 0.75,
     noise: 0.6, blunder: 0.2, margin: 1.0, reads: false, multiP: 0.12,
-    smiteP: 0.35, smiteMin: 6, aimErr: 1.4, swatP: 0.05, defendP: 0.25, idleP: 0.2,
+    smiteP: 0.35, smiteMin: 6, aimErr: 1.4, swatP: 0.05, defendP: 0.25, rallyP: 0, idleP: 0.2,
   },
   average: {
     name: 'average', hands: 2, interval: [1.0, 1.8], offhandSlow: 1.2, react: 0.5,
     noise: 0.35, blunder: 0.08, margin: 1.1, reads: true, multiP: 0.35,
-    smiteP: 0.5, smiteMin: 8, aimErr: 0.8, swatP: 0.15, defendP: 0.55, idleP: 0.1,
+    smiteP: 0.5, smiteMin: 8, aimErr: 0.8, swatP: 0.15, defendP: 0.55, rallyP: 0.12, idleP: 0.1,
   },
   skilled: {
     name: 'skilled', hands: 2, interval: [0.6, 1.15], offhandSlow: 0.3, react: 0.32,
     noise: 0.15, blunder: 0.02, margin: 1.2, reads: true, multiP: 0.6,
-    smiteP: 0.8, smiteMin: 10, aimErr: 0.4, swatP: 0.3, defendP: 0.85, idleP: 0.03,
+    smiteP: 0.8, smiteMin: 10, aimErr: 0.4, swatP: 0.3, defendP: 0.85, rallyP: 0.5, idleP: 0.03,
   },
 };
 
 type Pending =
   | { kind: 'send'; at: number; from: number[]; to: number }
   | { kind: 'smite'; at: number; x: number; z: number }
-  | { kind: 'swat'; at: number; key: string };
+  | { kind: 'swat'; at: number; key: string }
+  | { kind: 'rally'; at: number };
 
 interface Hand { next: number; pending: Pending | null }
 
@@ -97,6 +100,8 @@ export class PlayerBot {
         for (const o of this.hands) if (o.pending?.kind === 'send') o.pending.from.forEach((id) => busy.add(id));
         hand.pending = this.decide(sim, busy);
         if (hand.pending) hand.pending.at = t + this.skill.react + (hand.pending.kind === 'smite' ? MANA.smiteChargeTime : 0);
+        // a clap needs both hands: the other hand is busy too
+        if (hand.pending?.kind === 'rally') for (const o of this.hands) if (o !== hand) o.next = Math.max(o.next, hand.pending.at + 0.5);
       }
     }
   }
@@ -115,6 +120,8 @@ export class PlayerBot {
       x += this.rng.range(-1, 1) * this.skill.aimErr;
       z += this.rng.range(-1, 1) * this.skill.aimErr;
       sim.smite(x, z);
+    } else if (p.kind === 'rally') {
+      sim.rally();
     } else if (p.kind === 'swat') {
       const col = columns(sim).find((c) => c.key === p.key);
       if (!col) return;
@@ -141,6 +148,14 @@ export class PlayerBot {
     const inc = sim.incoming();
 
     // Powers ------------------------------------------------------------
+    if (sim.canRally() && !sim.rallyActive() && rng.chance(sk.rallyP)) {
+      // worth it when many bases are below cap (just emptied) and/or a big army is on the march
+      let gain = 0;
+      for (const b of sim.bases) if (b.owner === PLAYER) gain += Math.min(Math.max(0, b.cap - b.troops), b.growth * (MANA.rallyGrowth - 1) * MANA.rallyDuration);
+      let marching = 0;
+      for (const u of sim.units) if (u.alive && u.faction === PLAYER && sim.bases[u.to].owner !== PLAYER) marching++;
+      if (gain + marching * 0.4 >= 45) return { kind: 'rally', at: 0 };
+    }
     if (sim.mana >= MANA.smiteCost && rng.chance(sk.smiteP)) {
       const s = bestSmite(sim, inc);
       if (s && s.score >= sk.smiteMin) return { kind: 'smite', at: 0, x: s.x, z: s.z };
@@ -185,9 +200,11 @@ export class PlayerBot {
       if (sweep && order.length > 1) {
         const primary = order[0];
         const g = [primary];
+        const maxG = sk.reads ? 4 : 2;
         for (const o of order.slice(1)) {
-          if (g.length >= 3) break;
-          if (dist(o, primary) < 9 && dist(o, t) < dist(primary, t) + 6) g.push(o);
+          if (g.length >= maxG) break;
+          // a sweep chains over own bases lying next to each other
+          if (g.some((x) => dist(o, x) < 9) && dist(o, t) < dist(primary, t) + 8) g.push(o);
         }
         if (g.length > 1) groups.push(g);
       }
@@ -215,7 +232,7 @@ export class PlayerBot {
     if (best) return { kind: 'send', at: 0, from: best.from, to: best.to };
 
     // Consolidate: skilled players push full rear bases to the front.
-    if (sk.reads) {
+    if (sk.reads || rng.chance(0.3)) {
       const full = mine.filter((b) => b.troops > b.cap * 0.9);
       if (full.length && mine.length > 1) {
         const enemies = sim.bases.filter((b) => b.owner > PLAYER);
@@ -292,7 +309,7 @@ function columns(sim: Sim): Column[] {
 
 // ------------------------------------------------------------------ match runner
 
-export interface MatchResult { win: boolean; over: boolean; time: number; winner: number; smites: number; captures: number; aiCaptures: number }
+export interface MatchResult { win: boolean; over: boolean; time: number; winner: number; smites: number; rallies: number; captures: number; aiCaptures: number }
 
 /** Deterministic Math.random for the sim's cosmetic jitter. */
 function withSeededRandom<T>(seed: number, fn: () => T): T {
@@ -326,7 +343,7 @@ export function runMatch(level: Level, skill: Skill | null, seed: number, opts: 
       opts.trace?.(sim);
       sim.events.length = 0;
     }
-    return { win: sim.over && sim.winner === PLAYER, over: sim.over, time: sim.time, winner: sim.winner, smites: sim.stats.smites, captures: sim.stats.captures, aiCaptures };
+    return { win: sim.over && sim.winner === PLAYER, over: sim.over, time: sim.time, winner: sim.winner, smites: sim.stats.smites, rallies: sim.stats.rallies, captures: sim.stats.captures, aiCaptures };
   });
 }
 

@@ -97,6 +97,9 @@ export class Stage {
     this.baseCamPos.set(this.target.x, this.target.y + Math.sin(TILT) * d, this.target.z + Math.cos(TILT) * d);
   }
 
+  /** Jump the camera zoom (e.g. start a level zoomed out, then ease in to `zoom`). */
+  snapZoom(z: number) { this.zoomCur = z; this.fitCamera(); }
+
   shake(amount: number) { this.shakeAmt = Math.min(1.2, this.shakeAmt + amount); }
   flash(amount: number) { this.vignette.uniforms.flash.value = Math.min(0.6, this.vignette.uniforms.flash.value + amount); }
 

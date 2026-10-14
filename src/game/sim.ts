@@ -19,7 +19,9 @@ export class Sim {
   over = false;
   winner = -99;
   mana: number = MANA.max * 0.5;
-  stats: Stats = { captures: 0, lost: 0, kills: 0, smites: 0, swats: 0, sent: 0, peakArmy: 0 };
+  stats: Stats = { captures: 0, lost: 0, kills: 0, smites: 0, swats: 0, rallies: 0, sent: 0, peakArmy: 0 };
+  /** Sim time until which the player's RALLY is active (-1 = never). */
+  rallyUntil = -1;
   /** When false (attract mode), the player faction is AI-controlled / absent and mana is ignored. */
   hasPlayer = true;
 
@@ -90,6 +92,19 @@ export class Sim {
     return kills;
   }
 
+  rallyActive(): boolean { return this.time < this.rallyUntil; }
+  canRally(): boolean { return this.mana >= MANA.rallyCost && !this.over; }
+
+  /** Player RALLY (clap): for a few seconds player units march faster and player bases grow faster. */
+  rally(): boolean {
+    if (!this.canRally()) return false;
+    this.mana -= MANA.rallyCost;
+    this.rallyUntil = this.time + MANA.rallyDuration;
+    this.stats.rallies++;
+    this.events.push({ type: 'rally', until: this.rallyUntil });
+    return true;
+  }
+
   /** Palm swat: flings enemy units under the palm. Costs mana per unit. */
   swat(x: number, z: number, radius: number, vx: number, vz: number): number {
     let kills = 0;
@@ -147,9 +162,11 @@ export class Sim {
     this.time += dt;
 
     // Growth
+    const rally = this.rallyActive();
     for (const b of this.bases) {
       if (b.owner === NEUTRAL) continue;
-      if (b.troops < b.cap) b.troops = Math.min(b.cap, b.troops + b.growth * dt);
+      const g = rally && b.owner === PLAYER ? b.growth * MANA.rallyGrowth : b.growth;
+      if (b.troops < b.cap) b.troops = Math.min(b.cap, b.troops + g * dt);
       else b.troops = Math.max(b.cap, b.troops - SIM.overflowDecay * dt);
     }
 
@@ -210,10 +227,12 @@ export class Sim {
   }
 
   private moveUnits(dt: number) {
+    const boost = this.rallyActive() ? MANA.rallySpeed : 1;
     for (const u of this.units) {
       if (!u.alive) continue;
-      u.x += u.dx * u.speed * dt;
-      u.z += u.dz * u.speed * dt;
+      const sp = u.faction === PLAYER ? u.speed * boost : u.speed;
+      u.x += u.dx * sp * dt;
+      u.z += u.dz * sp * dt;
       const t = this.bases[u.to];
       const rx = t.x - u.x, rz = t.z - u.z;
       // arrived when inside the target footprint or we've passed it
