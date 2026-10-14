@@ -181,7 +181,7 @@ function setState(s: State) {
   buttons.showCursors = !inGame;
   pipEl.classList.toggle('hidden', s === 'boot' || s === 'loading' || s === 'nocam' || input.status !== 'running');
   pipEl.classList.toggle('big', s === 'raise');
-  stage.zoom = s === 'menu' || s === 'levels' || s === 'howto' || s === 'boot' || s === 'raise' || s === 'online' || s === 'searching' || s === 'room' ? 1.04 : 1;
+  stage.zoom = s === 'menu' || s === 'levels' || s === 'howto' || s === 'boot' || s === 'raise' || s === 'online' || s === 'searching' || s === 'room' ? 0.9 : 0.93;
   if (s !== 'play') audio.setCharge(0);
   if (!inGame && s !== 'pause' && s !== 'results') hud.setCoach(null);
   audio.setIntensity(inGame ? 0.6 : s === 'pause' ? 0.2 : 0.05);

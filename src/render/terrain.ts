@@ -613,6 +613,7 @@ export function buildTerrain(spec: TerrainSpec): Terrain {
         const y = heightAt(x, z);
         if (y < WATER_LEVEL + 0.1) continue;
         if (baseClearance(x, z, 2.2) < 0.45) continue;
+        if (ornaments.covers(x, z)) continue;
         const inside = insideAmt(x, z);
         const slope = slopeAt(x, z);
         const beach = shoreDist(x, z) < 1.4 + 0.5 * nColor(x * 0.45, z * 0.45);

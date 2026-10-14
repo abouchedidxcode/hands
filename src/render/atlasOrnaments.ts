@@ -23,7 +23,15 @@ export interface OrnamentSpec {
   waterLevel: number;
   heightAt(x: number, z: number): number;
 }
-export interface Ornaments { group: THREE.Group; update(t: number): void; dispose(): void }
+export interface Ornaments {
+  group: THREE.Group;
+  /** True where a land ornament is printed (the terrain keeps its trees out of the art). */
+  covers(x: number, z: number): boolean;
+  /** World rect of the (empty) title cartouche, if one was placed — e.g. to letter the map name. */
+  cartouche: { x: number; z: number; w: number; h: number } | null;
+  update(t: number): void;
+  dispose(): void;
+}
 
 type Need = 'sea' | 'land' | 'any';
 type Anim = 'none' | 'compass' | 'swim' | 'ship' | 'wind';
@@ -39,21 +47,21 @@ interface Def {
 }
 
 const D = {
-  compass: { file: 'compass', aspect: 1.0, width: 8.2, need: 'any', anim: 'compass', prio: 1.0 },
-  compass2: { file: 'compass2', aspect: 1.0, width: 7.6, need: 'any', anim: 'compass', prio: 1.0 },
-  serpent: { file: 'serpent', aspect: 1.724, width: 9.5, need: 'sea', anim: 'swim', prio: 1.0, facesLeft: true },
-  kraken: { file: 'kraken', aspect: 1.1, width: 6.5, need: 'sea', anim: 'swim', prio: 0.8 },
-  whale: { file: 'whale', aspect: 1.536, width: 7.0, need: 'sea', anim: 'swim', prio: 0.8, facesLeft: true },
-  galleon: { file: 'galleon', aspect: 1.089, width: 4.6, need: 'sea', anim: 'ship', prio: 0.9, facesLeft: true },
-  windhead: { file: 'windhead', aspect: 1.18, width: 6.0, need: 'any', anim: 'wind', prio: 0.6 },
-  cartouche: { file: 'cartouche', aspect: 1.736, width: 10.5, need: 'any', anim: 'none', prio: 0.85 },
-  mountains: { file: 'mountains', aspect: 2.543, width: 7.5, need: 'land', anim: 'none', prio: 0.55 },
-  forest: { file: 'forest', aspect: 1.561, width: 4.6, need: 'land', anim: 'none', prio: 0.45 },
+  compass: { file: 'compass', aspect: 1.0, width: 10.0, need: 'any', anim: 'compass', prio: 1.0 },
+  compass2: { file: 'compass2', aspect: 1.0, width: 9.4, need: 'any', anim: 'compass', prio: 1.0 },
+  serpent: { file: 'serpent', aspect: 1.724, width: 11.0, need: 'sea', anim: 'swim', prio: 1.0, facesLeft: true },
+  kraken: { file: 'kraken', aspect: 1.1, width: 7.6, need: 'sea', anim: 'swim', prio: 0.8 },
+  whale: { file: 'whale', aspect: 1.536, width: 8.2, need: 'sea', anim: 'swim', prio: 0.8, facesLeft: true },
+  galleon: { file: 'galleon', aspect: 1.089, width: 5.6, need: 'sea', anim: 'ship', prio: 0.9, facesLeft: true },
+  windhead: { file: 'windhead', aspect: 1.18, width: 7.0, need: 'any', anim: 'wind', prio: 0.4 },
+  cartouche: { file: 'cartouche', aspect: 1.736, width: 11.5, need: 'any', anim: 'none', prio: 0.85 },
+  mountains: { file: 'mountains', aspect: 2.543, width: 8.2, need: 'land', anim: 'none', prio: 0.55 },
+  forest: { file: 'forest', aspect: 1.561, width: 5.2, need: 'land', anim: 'none', prio: 0.45 },
   corner: { file: 'corner', aspect: 1.019, width: 6.0, need: 'any', anim: 'none', prio: 0 },
 } satisfies Record<string, Def>;
 
 /** Sepia iron-gall ink. */
-const INK = new THREE.Color('#3d2a1a');
+const INK = new THREE.Color('#2a1a0e');
 
 // ---------------------------------------------------------------- textures (shared across maps)
 const texCache = new Map<string, Promise<THREE.Texture | null>>();
@@ -123,11 +131,12 @@ void main() {
   // hand-printed wobble, boiling at the ink pass' ~7 fps
   float boil = floor(uTime * 7.0);
   uv += (vec2(o_noise(vUv * 40.0 + boil), o_noise(vUv * 40.0 - boil + 7.0)) - 0.5) * 0.0016;
-  float d = 1.0 - texture2D(map, uv).r;
+  float d = 1.0 - texture2D(map, uv, -0.6).r;
+  d = pow(d, 0.6);
   d *= step(0.0, uv.x) * step(uv.x, 1.0) * step(0.0, uv.y) * step(uv.y, 1.0);
   // ink skips over the paper fibres
   float g = o_noise(vW * 7.0) * 0.6 + o_noise(vec2(vW.x * 22.0, vW.y * 5.0)) * 0.4;
-  d *= 0.7 + 0.42 * g;
+  d *= 0.8 + 0.3 * g;
   // the ink soaks in when the map is drawn
   float n = o_noise(vUv * 5.0 + uSeed) * 0.7 + o_noise(vUv * 23.0) * 0.3;
   d *= smoothstep(n - 0.08, n + 0.02, uReveal * 1.15 - 0.05);
@@ -178,11 +187,11 @@ export function buildOrnaments(spec: OrnamentSpec): Ornaments {
   // Ground footprint of the game camera (16:9, zoom 1), a trapezoid: far edge wider.
   const FAR_Z = -21.5, NEAR_Z = 14.6, FAR_X = 33.1, NEAR_X = 21.4;
   const inView = (x: number, z: number) => {
-    if (z < FAR_Z + 0.6 || z > NEAR_Z - 0.4) return false;
+    if (z < FAR_Z + 1.0 || z > NEAR_Z - 0.4) return false;
     const e = FAR_X + (NEAR_X - FAR_X) * (z - FAR_Z) / (NEAR_Z - FAR_Z);
-    if (Math.abs(x) > e - 0.6) return false;
+    if (Math.abs(x) > e - 1.2) return false; // (the burnt vignette eats the very edge)
     // the HUD title / score bar covers the top centre
-    if (z < -16.5 && Math.abs(x) < 17) return false;
+    if (z < -15.2 && Math.abs(x) < 21.5) return false;
     return true;
   };
   const isSea = (x: number, z: number) => heightAt(x, z) < WL - 0.06;
@@ -211,17 +220,16 @@ export function buildOrnaments(spec: OrnamentSpec): Ornaments {
         const jx = x + (rng() - 0.5) * 0.8, jz = z + (rng() - 0.5) * 0.8;
         if (Math.abs(jx) + hx > 42 || Math.abs(jz) + hz > 31) continue;
         if (!clearOfRect(jx, jz, hx, hz)) continue;
-        if (!clearOfOthers(jx, jz, hx, hz, opts.minSpacing ?? 1.2)) continue;
-        // seabed / land constraints (sampled inside the art's busy core)
-        let sea = 0;
-        if (def.need === 'sea') { sea = frac(jx, jz, hx * 0.9, hz * 0.9, isSea); if (sea < 0.92) continue; }
-        else if (def.need === 'land') { if (frac(jx, jz, hx * 0.85, hz * 0.85, isLand) < 0.85) continue; }
-        else sea = frac(jx, jz, hx * 0.8, hz * 0.8, isSea);
+        if (!clearOfOthers(jx, jz, hx, hz, opts.minSpacing ?? 2.2)) continue;
         const vis = frac(jx, jz, hx * 0.8, hz * 0.8, inView);
         // frame the island: prefer spots hugging the playable rect
         const out = Math.max(Math.abs(jx) - hx - hw, Math.abs(jz) - hz - hd);
-        let score = def.prio * vis * 2 - out * 0.06 + rng() * 0.5;
-        if (def.need === 'any') score += sea * 0.6; // map furniture likes open sea too
+        let score = def.prio * vis * 3 - out * 0.08 + rng() * 0.5;
+        if (score + (def.need === 'any' ? 0.6 : 0) <= bestScore) continue; // can't win: skip the terrain probes
+        // seabed / land constraints (sampled inside the art's busy core)
+        if (def.need === 'sea') { if (frac(jx, jz, hx * 0.9, hz * 0.9, isSea) < 0.92) continue; }
+        else if (def.need === 'land') { if (frac(jx, jz, hx * 0.85, hz * 0.85, isLand) < 0.85) continue; }
+        else score += frac(jx, jz, hx * 0.8, hz * 0.8, isSea) * 0.6; // map furniture likes open sea too
         if (score > bestScore) { bestScore = score; best = { def, x: jx, z: jz, w, h, flip: false, rot: (rng() - 0.5) * 0.12 }; }
       }
     }
@@ -231,8 +239,9 @@ export function buildOrnaments(spec: OrnamentSpec): Ornaments {
 
   // order matters: earlier ornaments get the best (visible) spots
   const pick = <T,>(a: T[]) => a[Math.floor(rng() * a.length)];
-  const order: Def[] = [pick([D.compass, D.compass2]), D.serpent];
-  const mid: Def[] = [D.cartouche, D.galleon, pick([D.kraken, D.whale])];
+  const order: Def[] = rng() < 0.5 ? [pick([D.compass, D.compass2]), D.serpent] : [D.serpent, pick([D.compass, D.compass2])];
+  order.splice(1, 0, D.galleon);
+  const mid: Def[] = [D.cartouche, pick([D.kraken, D.whale])];
   if (rng() < 0.5) mid.reverse();
   order.push(...mid, D.windhead, D.mountains, D.forest, D.mountains, pick([D.whale, D.kraken]));
   for (const def of order) {
@@ -254,7 +263,7 @@ export function buildOrnaments(spec: OrnamentSpec): Ornaments {
     }
   }
   // border corners: the chart's frame, just around the visible sheet
-  const CX = hw + 9.2, CZ = hd + 7.4;
+  const CX = hw + 8.6, CZ = hd + 6.9;
   for (const [sx, sz] of [[-1, -1], [1, -1], [-1, 1], [1, 1]]) {
     const w = D.corner.width;
     const p: Placed = { def: D.corner, x: sx * CX, z: sz * CZ, w, h: w / D.corner.aspect, flip: false, rot: 0 };
@@ -279,7 +288,7 @@ export function buildOrnaments(spec: OrnamentSpec): Ornaments {
       const geo = new THREE.PlaneGeometry(p.w, p.h, seg, seg);
       geo.rotateX(-Math.PI / 2);
       const cornerFlip = p as Placed & { sx?: number; sz?: number };
-      const mat = makeMaterial(tex, time, idx * 0.37 + (spec.seed % 97) * 0.01, p.flip, def === D.corner ? 0.8 : 0.9);
+      const mat = makeMaterial(tex, time, idx * 0.37 + (spec.seed % 97) * 0.01, p.flip, def === D.corner ? 0.85 : 1.0);
       const mesh = new THREE.Mesh(geo, mat);
       mesh.name = `orn:${def.file}`;
       mesh.renderOrder = 1;
@@ -315,8 +324,15 @@ export function buildOrnaments(spec: OrnamentSpec): Ornaments {
     });
   });
 
+  const land = placed.filter((p) => p.def.need !== 'sea' && p.def !== D.corner);
+  const cart = placed.find((p) => p.def === D.cartouche);
   return {
     group,
+    covers(x: number, z: number) {
+      for (const p of land) if (Math.abs(x - p.x) < p.w * 0.42 && Math.abs(z - p.z) < p.h * 0.42) return true;
+      return false;
+    },
+    cartouche: cart ? { x: cart.x, z: cart.z, w: cart.w, h: cart.h } : null,
     update(t: number) {
       time.value = t;
       // the ink soaks in on wall-clock time (independent of game speed / frame rate)
