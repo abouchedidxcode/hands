@@ -10,13 +10,14 @@ export interface Snapshot {
   time: number;
   over: boolean;
   winner: number;
-  mana: [number, number];
-  rallyUntil: [number, number];
+  /** Per faction. */
+  mana: number[];
+  rallyUntil: number[];
   bases: { owner: number; troops: number; lastHit: number }[];
   units: { id: number; x: number; z: number; dx: number; dz: number; faction: number; to: number; speed: number }[];
 }
 
-const HEADER = 1 + 4 + 1 + 1 + 4 * 4 + 1 + 2;
+const HEADER = 1 + 4 + 1 + 1 + 1 + 1 + 2; // + 8 bytes per faction (mana, rally)
 const PER_BASE = 1 + 2 + 2;
 const PER_UNIT = 4 + 2 + 2 + 1 + 1 + 1 + 1 + 1;
 
@@ -26,17 +27,19 @@ export function encodeSnapshot(sim: Sim): ArrayBuffer {
   const boost = rallyUntil.map((_, f) => (sim.rallyActive(f) ? MANA.rallySpeed : 1));
   const alive = sim.units.filter((u) => u.alive);
   const n = Math.min(alive.length, 65535);
-  const buf = new ArrayBuffer(HEADER + bases.length * PER_BASE + n * PER_UNIT);
+  const nf = sim.factions;
+  const buf = new ArrayBuffer(HEADER + nf * 8 + bases.length * PER_BASE + n * PER_UNIT);
   const v = new DataView(buf);
   let o = 0;
-  v.setUint8(o, 1); o += 1;
+  v.setUint8(o, 2); o += 1;
   v.setFloat32(o, time, true); o += 4;
   v.setUint8(o, over ? 1 : 0); o += 1;
   v.setInt8(o, Math.max(-128, Math.min(127, winner))); o += 1;
-  v.setFloat32(o, mana[0] ?? 0, true); o += 4;
-  v.setFloat32(o, mana[1] ?? 0, true); o += 4;
-  v.setFloat32(o, rallyUntil[0] ?? -1, true); o += 4;
-  v.setFloat32(o, rallyUntil[1] ?? -1, true); o += 4;
+  v.setUint8(o, nf); o += 1;
+  for (let f = 0; f < nf; f++) {
+    v.setFloat32(o, mana[f] ?? 0, true); o += 4;
+    v.setFloat32(o, rallyUntil[f] ?? -1, true); o += 4;
+  }
   v.setUint8(o, bases.length); o += 1;
   v.setUint16(o, n, true); o += 2;
   for (const b of bases) {
@@ -61,16 +64,18 @@ export function encodeSnapshot(sim: Sim): ArrayBuffer {
 
 export function decodeSnapshot(buf: ArrayBuffer): Snapshot | null {
   const v = new DataView(buf);
-  if (v.byteLength < HEADER || v.getUint8(0) !== 1) return null;
+  if (v.byteLength < HEADER || v.getUint8(0) !== 2) return null;
   let o = 1;
   const time = v.getFloat32(o, true); o += 4;
   const over = v.getUint8(o) === 1; o += 1;
   const winner = v.getInt8(o); o += 1;
-  const mana: [number, number] = [v.getFloat32(o, true), v.getFloat32(o + 4, true)]; o += 8;
-  const rallyUntil: [number, number] = [v.getFloat32(o, true), v.getFloat32(o + 4, true)]; o += 8;
+  const nf = v.getUint8(o); o += 1;
+  if (v.byteLength < HEADER + nf * 8) return null;
+  const mana: number[] = [], rallyUntil: number[] = [];
+  for (let f = 0; f < nf; f++) { mana.push(v.getFloat32(o, true)); rallyUntil.push(v.getFloat32(o + 4, true)); o += 8; }
   const nb = v.getUint8(o); o += 1;
   const nu = v.getUint16(o, true); o += 2;
-  if (v.byteLength < HEADER + nb * PER_BASE + nu * PER_UNIT) return null; // truncated / corrupt
+  if (v.byteLength < HEADER + nf * 8 + nb * PER_BASE + nu * PER_UNIT) return null; // truncated / corrupt
   const bases: Snapshot['bases'] = [];
   for (let i = 0; i < nb; i++) {
     const owner = v.getInt8(o); o += 1;

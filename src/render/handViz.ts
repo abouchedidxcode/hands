@@ -39,7 +39,18 @@ const PALETTES: Palette[] = [
   // online opponent: vermilion ink with a blood-red rim
   { body: new THREE.Color().setRGB(0.32, 0.03, 0.02), rim: new THREE.Color().setRGB(1.9, 0.22, 0.12), hot: new THREE.Color().setRGB(1.9, 0.5, 0.3) },
   { body: new THREE.Color().setRGB(0.28, 0.03, 0.06), rim: new THREE.Color().setRGB(1.7, 0.18, 0.3), hot: new THREE.Color().setRGB(1.9, 0.45, 0.45) },
+  // online opponent playing blue (faction 0): indigo ink, sky rim
+  { body: new THREE.Color().setRGB(0.03, 0.1, 0.3), rim: new THREE.Color().setRGB(0.25, 0.95, 1.9), hot: new THREE.Color().setRGB(0.6, 1.2, 1.9) },
+  { body: new THREE.Color().setRGB(0.04, 0.08, 0.26), rim: new THREE.Color().setRGB(0.3, 0.75, 1.8), hot: new THREE.Color().setRGB(0.6, 1.1, 1.9) },
+  // online opponent playing amber (faction 2): burnt-umber ink, deep orange rim (distinct from our gold)
+  { body: new THREE.Color().setRGB(0.32, 0.08, 0.0), rim: new THREE.Color().setRGB(1.9, 0.5, 0.02), hot: new THREE.Color().setRGB(1.9, 0.8, 0.25) },
+  { body: new THREE.Color().setRGB(0.3, 0.07, 0.0), rim: new THREE.Color().setRGB(1.8, 0.42, 0.02), hot: new THREE.Color().setRGB(1.9, 0.75, 0.22) },
 ];
+
+/** Ghost-hand palettes for an online opponent playing faction `f`. */
+export function opponentPalettes(f: number): [number, number] {
+  return f === 0 ? [4, 5] : f === 2 ? [6, 7] : [2, 3];
+}
 const ONES = [1, 1, 1, 1, 1];
 
 const approach = (cur: number, target: number, rate: number, dt: number) => cur + (target - cur) * Math.min(1, dt * rate);
@@ -258,7 +269,7 @@ class OneHand {
 export class HandViz {
   group = new THREE.Group();
   hands: OneHand[];
-  /** `palettes`: [0, 1] for the local player, [2, 3] for an online opponent. */
+  /** `palettes`: [0, 1] for the local player, `opponentPalettes(f)` for an online opponent. */
   constructor(palettes: [number, number] = [0, 1]) {
     this.hands = palettes.map((p) => new OneHand(p));
     for (const h of this.hands) this.group.add(h.group);

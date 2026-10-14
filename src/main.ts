@@ -5,11 +5,11 @@ import { audio, audioStream } from './audio/audio';
 import { ClipRecorder } from './record/recorder';
 import { Warlord } from './game/ai';
 import { LEVELS, skirmish, versus, type Level } from './game/levels';
-import { generateMap, generateVersusMap } from './game/mapgen';
+import { generateMap, generateTriMap, generateVersusMap } from './game/mapgen';
 import { Sim } from './game/sim';
 import type { GameEvent, Stats } from './game/types';
 import { GuestSim } from './net/guestSim';
-import { Matchmaker, makeCode, type Match } from './net/matchmaker';
+import { Matchmaker, makeCode, type Match, type MatchSize } from './net/matchmaker';
 import { encodeSnapshot, filterEvents, type Command, type RemoteHand } from './net/protocol';
 import { NetSession } from './net/session';
 import { onlineScreens } from './ui/onlineScreens';
@@ -23,7 +23,7 @@ import { DragArrows } from './render/arrows';
 import { atlas } from './render/atlas';
 import { BaseViews } from './render/bases';
 import { Fx } from './render/fx';
-import { HandViz } from './render/handViz';
+import { HandViz, opponentPalettes } from './render/handViz';
 import { Stage } from './render/scene';
 import { buildTerrain, type Terrain } from './render/terrain';
 import { UnitViews } from './render/units';
@@ -53,9 +53,9 @@ const hud = new Hud($('hud'), $('toasts'), $('coach'));
 const fx = new Fx(stage.scene);
 const arrows = new DragArrows();
 const handViz = new HandViz();
-/** The online opponent's hands, re-projected from their world positions. */
-const oppViz = new HandViz([2, 3]);
-stage.scene.add(arrows.group, handViz.group, oppViz.group);
+/** Online opponents' hands (indexed by their faction), re-projected from their world positions. */
+const oppViz = [0, 1, 2].map((f) => new HandViz(opponentPalettes(f)));
+stage.scene.add(arrows.group, handViz.group, ...oppViz.map((v) => v.group));
 buttons.onHover = () => audio.play('hover', { volume: 0.6 });
 buttons.onFire = () => audio.play('confirm');
 
@@ -127,17 +127,26 @@ let net: NetSession | null = null;
 let online: 'host' | 'guest' | null = null;
 let snapTimer = 0;
 let handTimer = 0;
-let remoteHands: RemoteHand[] = [];
-let remoteHandsAt = 0;
+/** Online: players in the match (2 = duel, 3 = brawl). */
+let players: MatchSize = 2;
+/** Size of the match being searched for / the private room being waited in. */
+let searchSize: MatchSize = 2;
+/** Latest hands from each opponent, by faction. */
+const remoteHands: { h: RemoteHand[]; at: number }[] = [];
 let endReason = '';
-const rematch = { me: false, them: false };
+const rematch = { me: false, votes: new Set<number>() };
 const matchmaker = new Matchmaker((m) => onMatchFound(m));
-const remoteHandStates: [HandState, HandState] = [emptyHand(0), emptyHand(1)];
+const remoteHandStates: [HandState, HandState][] = [0, 1, 2].map(() => [emptyHand(0), emptyHand(1)]);
+const NO_HANDS: [HandState, HandState] = [{ ...emptyHand(0) }, { ...emptyHand(1) }];
+/** Colour names for online players (factions 0..2). */
+const COLOR_NAMES = ['Blue', 'Red', 'Amber'];
+const colorName = (f: number) => COLOR_NAMES[f] ?? FACTION_NAMES[f] ?? '?';
+const onlineTitle = () => (players === 3 ? 'Online brawl' : 'Online duel');
 
 function pan(x: number) { return Math.max(-1, Math.min(1, x / (BOARD.width / 2))); }
 
 function loadWorld(level: Level, attract: boolean, mode: 'host' | 'guest' | null = null) {
-  const bases = mode ? generateVersusMap(level.map.seed) : generateMap(level.map);
+  const bases = mode ? (players === 3 ? generateTriMap(level.map.seed) : generateVersusMap(level.map.seed)) : generateMap(level.map);
   terrain?.dispose();
   if (terrain) stage.scene.remove(terrain.group);
   terrain = buildTerrain({ seed: level.map.seed, width: BOARD.width, depth: BOARD.depth, bases: bases.map((b) => ({ x: b.x, z: b.z, r: b.radius })) });
@@ -148,13 +157,13 @@ function loadWorld(level: Level, attract: boolean, mode: 'host' | 'guest' | null
   const factions = level.map.enemies + 1;
   const sim = mode === 'guest' ? new GuestSim(bases, factions, (c) => net?.sendCommand(c)) : new Sim(bases, factions);
   sim.hasPlayer = !attract;
-  if (mode) sim.humans = [0, 1];
+  if (mode) sim.humans = Array.from({ length: factions }, (_, f) => f);
   const ais: Warlord[] = [];
   if (!mode) for (let f = attract ? 0 : 1; f < factions; f++) ais.push(new Warlord(f, attract ? { think: 1.1, aggro: 0.6, focusPlayer: 1 } : level.ai, level.map.seed));
   world = { level, sim, ais, attract };
   commander.reset();
   commander.faction = me;
-  hud.setup(factions, mode ? `ONLINE DUEL · YOU ARE ${me === 0 ? 'BLUE' : 'RED'}` : level.tutorial ? 'TRAINING' : `${level.id < 100 ? 'LEVEL ' + level.id : 'SKIRMISH'} · ${level.name.toUpperCase()}`, me, mode ? ['Rival', 'Rival'] : undefined);
+  hud.setup(factions, mode ? `${onlineTitle().toUpperCase()} · YOU ARE ${colorName(me).toUpperCase()}` : level.tutorial ? 'TRAINING' : `${level.id < 100 ? 'LEVEL ' + level.id : 'SKIRMISH'} · ${level.name.toUpperCase()}`, me, mode ? COLOR_NAMES.slice(0, factions) : undefined);
 }
 
 function attract() {
@@ -198,7 +207,7 @@ function setState(s: State) {
       $('b-howto').onclick = () => setState('howto');
       {
         const row = screenEl.querySelector('.orbs');
-        row?.insertAdjacentHTML('beforeend', '<div class="hb gold" data-hb id="b-online"><div class="icon">🌍</div>ONLINE<div class="sub">1v1 duel</div></div>');
+        row?.insertAdjacentHTML('beforeend', '<div class="hb gold" data-hb id="b-online"><div class="icon">🌍</div>ONLINE<div class="sub">1v1 · 1v1v1</div></div>');
         $('b-online').onclick = () => setState('online');
       }
       break;
@@ -206,16 +215,15 @@ function setState(s: State) {
       attract();
       screenEl.innerHTML = onlineScreens.lobby();
       $('b-back').onclick = () => setState('menu');
-      $('b-quick').onclick = () => { matchmaker.quick(); setState('searching'); };
-      $('b-room').onclick = () => {
-        const code = makeCode();
-        matchmaker.privateRoom(code);
-        roomCode = code;
-        setState('room');
-      };
+      $('b-quick').onclick = () => quickMatch(2);
+      $('b-quick3').onclick = () => quickMatch(3);
+      $('b-room').onclick = () => joinRoom(makeCode(), 2);
+      $('b-room3').onclick = () => joinRoom(makeCode(), 3);
       break;
     case 'searching':
-      screenEl.innerHTML = onlineScreens.searching('FINDING AN OPPONENT');
+      screenEl.innerHTML = searchSize === 3
+        ? onlineScreens.searching('FINDING TWO RIVALS', 'Searching the known world for two more gods…')
+        : onlineScreens.searching('FINDING AN OPPONENT');
       setTimeout(() => {
         const tag = screenEl.querySelector('.tagline');
         if (state === 'searching' && matchmaker.status === 'searching' && tag) tag.textContent = 'Few gods online right now. Keep waiting, or cancel and send a friend a private link.';
@@ -223,8 +231,10 @@ function setState(s: State) {
       $('b-cancel').onclick = () => { matchmaker.cancel(); setState('online'); };
       break;
     case 'room': {
-      const link = `${location.origin}${location.pathname}?vs=${roomCode}`;
-      screenEl.innerHTML = onlineScreens.room(roomCode, link);
+      const link = `${location.origin}${location.pathname}?${searchSize === 3 ? 'vs3' : 'vs'}=${roomCode}`;
+      screenEl.innerHTML = onlineScreens.room(roomCode, link, searchSize);
+      matchmaker.onRoomCount = (n) => { const el = document.getElementById('room-count'); if (el) el.textContent = `${n} / ${searchSize} gods here`; };
+      matchmaker.onRoomCount(Math.max(1, matchmaker.roomCount));
       $('b-cancel').onclick = () => { matchmaker.cancel(); setState('online'); };
       $('b-copy').onclick = () => {
         navigator.clipboard?.writeText(link).then(() => hud.toast('LINK COPIED', '#ffd166', true, 'copy', 0)).catch(() => ($('room-link') as HTMLInputElement).select());
@@ -262,7 +272,7 @@ function setState(s: State) {
       buttons.hold(1.0);
       $('b-resume').onclick = () => setState('play');
       $('b-quit').onclick = () => { tutorial.stop(hud); recorder.stop(true); if (online) leaveOnline(); else setState('menu'); };
-      if (online) { const h = screenEl.querySelector('.tagline'); if (h) h.textContent = 'The duel goes on without you! Show your hand to fight, or forfeit.'; }
+      if (online) { const h = screenEl.querySelector('.tagline'); if (h) h.textContent = `The ${players === 3 ? 'brawl' : 'duel'} goes on without you! Show your hand to fight, or forfeit.`; }
       break;
     case 'results': {
       if (online) { showOnlineResults(); break; }
@@ -322,71 +332,101 @@ function startLevel(level: Level) {
 
 let roomCode = '';
 
-// ------------------------------------------------------------------ online duel
+// ------------------------------------------------------------------ online (duel 1v1 / brawl 1v1v1)
+function quickMatch(size: MatchSize) {
+  searchSize = size;
+  matchmaker.quick(size);
+  setState('searching');
+}
+
+function joinRoom(code: string, size: MatchSize) {
+  searchSize = size;
+  roomCode = code.toUpperCase();
+  matchmaker.privateRoom(roomCode, size);
+  setState('room');
+}
+
 function onMatchFound(m: Match) {
   net?.close();
-  net = new NetSession(m);
+  const n = (net = new NetSession(m));
   online = m.host ? 'host' : 'guest';
-  me = m.host ? 0 : 1;
-  screenEl.innerHTML = onlineScreens.searching('OPPONENT FOUND · CONNECTING');
+  players = m.size;
+  me = n.me;
+  remoteHands.length = 0;
+  screenEl.innerHTML = onlineScreens.searching(players === 3 ? 'RIVALS FOUND · CONNECTING' : 'OPPONENT FOUND · CONNECTING', 'Opening a channel between the gods…');
   $('b-cancel').onclick = () => leaveOnline();
-  net.onStart = (seed) => startOnline(seed);
-  net.onCommand = (c) => applyRemoteCommand(c);
-  net.onSnapshot = (snap) => {
+  n.onStart = (seed) => startOnline(seed);
+  n.onCommand = (c, f) => applyRemoteCommand(c, f);
+  n.onSnapshot = (snap) => {
     if (world?.sim instanceof GuestSim) { world.sim.latency = Math.min(0.25, (net?.rtt ?? 100) / 2000); world.sim.apply(snap); }
   };
-  net.onEvents = (evs) => { if (world && !world.attract) world.sim.events.push(...evs); };
-  net.onHand = (h) => { remoteHands = h; remoteHandsAt = performance.now(); };
-  net.onRematch = () => {
-    rematch.them = true;
-    if (!rematch.me) hud.toast('OPPONENT WANTS A REMATCH', '#ffd166', true, 'rmw', 0);
+  n.onEvents = (evs) => { if (world && !world.attract) world.sim.events.push(...evs); };
+  n.onHand = (h, f) => { remoteHands[f] = { h, at: performance.now() }; };
+  n.onRematch = (f) => {
+    rematch.votes.add(f);
+    if (!rematch.me) hud.toast(players === 3 ? `${colorName(f).toUpperCase()} WANTS A REMATCH` : 'OPPONENT WANTS A REMATCH', '#ffd166', true, 'rmw' + f, 0);
     maybeRematch();
   };
-  net.channel.on('stats', (d) => {
+  n.channel.on('stats', (d) => {
     const st = d as { s: Stats[] };
-    if (world && online === 'guest') { world.sim.statsOf[0] = st.s[0]; world.sim.statsOf[1] = st.s[1]; }
+    if (world && online === 'guest') st.s.forEach((x, f) => { if (x) world!.sim.statsOf[f] = x; });
     if (state === 'results') setState('results');
   });
-  net.onLeft = () => {
-    hud.toast('OPPONENT LEFT', '#ff8095', false, 'left', 0);
-    if (state === 'play' || state === 'countdown') {
+  n.onLeft = (f, hostLeft) => {
+    if (net !== n) return;
+    hud.toast(players === 3 ? `${colorName(f).toUpperCase()} LEFT` : 'OPPONENT LEFT', '#ff8095', false, 'left' + f, 0);
+    remoteHands[f] = { h: [], at: 0 };
+    rematch.votes.delete(f);
+    const inGame = state === 'play' || state === 'countdown' || state === 'pause';
+    const sim = world && !world.attract ? world.sim : null;
+    if (!n.started && !inGame && state !== 'results') { leaveOnline(); return; }
+    if (inGame || (state === 'results' && sim && !sim.over)) {
       // don't overwrite a result that was already decided (e.g. the winner closed the tab at VICTORY)
-      if (world && !world.sim.over) { world.sim.over = true; world.sim.winner = me; endReason = 'opponent left'; }
-      if (endTimer < 0) endTimer = 0.8;
-    } else if (state === 'results') {
-      const b = document.getElementById('b-rematch');
-      b?.classList.add('locked');
-    } else leaveOnline();
+      if (sim && !sim.over) {
+        if (hostLeft && players === 3) { sim.over = true; sim.winner = -1; endReason = 'host left'; }
+        else if (!n.connected) { sim.over = true; sim.winner = me; endReason = players === 3 ? 'everyone left' : 'opponent left'; }
+        // otherwise (a brawl guest left) their castles stay on the board, undefended by any god
+      }
+      if (sim?.over && endTimer < 0) endTimer = 0.8;
+    }
+    if (state === 'results') {
+      if (!n.connected) document.getElementById('b-rematch')?.classList.add('locked');
+      else maybeRematch();
+    }
   };
 }
 
 function startOnline(seed: number) {
   if (!net) return;
-  rematch.me = rematch.them = false;
+  rematch.me = false;
+  rematch.votes.clear();
   endReason = '';
-  currentLevel = versus(seed);
+  currentLevel = versus(seed, players);
   loadWorld(currentLevel, false, online);
   endTimer = -1;
   timeScale = 1;
   commander.allowSmite = commander.allowSend = commander.allowRally = true;
-  recorder.start('Online duel', audioStream());
+  recorder.start(onlineTitle(), audioStream());
   setState('countdown');
   stage.snapZoom(0.55);
 }
 
-function applyRemoteCommand(c: Command) {
-  if (!world || online !== 'host' || state !== 'play') return;
+function applyRemoteCommand(c: Command, f: number) {
+  if (!world || online !== 'host' || world.attract || world.sim.over || f < 0 || f >= world.sim.factions) return;
+  if (!(state === 'play' || state === 'pause' || state === 'results')) return;
   const sim = world.sim;
-  const opp = 1;
   switch (c.k) {
-    case 'send': sim.send(c.from, c.to, opp); break;
-    case 'smite': sim.smite(c.x, c.z, opp); break;
-    case 'rally': sim.rally(opp); break;
+    case 'send': sim.send(c.from, c.to, f); break;
+    case 'smite': sim.smite(c.x, c.z, f); break;
+    case 'rally': sim.rally(f); break;
   }
 }
 
+/** The host restarts once the match is over and every connected player asked for a rematch. */
 function maybeRematch() {
-  if (!net || !rematch.me || !rematch.them) return;
+  if (!net || !net.host || !rematch.me || !world || !world.sim.over) return;
+  for (const p of net.others()) if (!rematch.votes.has(net.factionOf(p))) return;
+  if (!net.connected) return;
   net.rematch();
 }
 
@@ -397,30 +437,34 @@ function leaveOnline() {
   online = null;
   me = PLAYER;
   commander.faction = PLAYER;
-  remoteHands = [];
+  remoteHands.length = 0;
   recorder.stop(true);
   setState('menu');
 }
 
 function showOnlineResults() {
   const sim = world!.sim;
-  const win = sim.winner === me;
-  screenEl.innerHTML = onlineScreens.results(win, sim.time, sim.statsOf[me], sim.statsOf[1 - me] ?? null, endReason);
-  if (rematch.me) $('b-rematch').classList.add('locked');
+  const order = [me, ...Array.from({ length: sim.factions }, (_, f) => f).filter((f) => f !== me)];
+  const rows = order.map((f) => ({ name: colorName(f).toUpperCase(), color: factionColor(f), me: f === me, stats: sim.statsOf[f] ?? null, won: sim.over && sim.winner === f }));
+  const eliminated = !sim.over && !sim.alive[me];
+  screenEl.innerHTML = onlineScreens.results(rows, sim.time, onlineTitle(), eliminated ? 'eliminated' : endReason, sim.over && sim.winner < 0);
+  const rm = $('b-rematch');
+  if (rematch.me || !net?.connected) rm.classList.add('locked');
   buttons.hold(1.2);
-  recorder.stop();
+  if (sim.over) recorder.stop();
   $('b-menu').onclick = () => leaveOnline();
-  $('b-rematch').onclick = () => {
-    if (!net?.connected) return;
+  rm.onclick = () => {
+    if (!net?.connected || rematch.me) return;
     rematch.me = true;
     net.wantRematch();
-    $('b-rematch').classList.add('locked');
-    hud.toast(rematch.them ? 'REMATCH!' : 'WAITING FOR OPPONENT…', '#ffffff', true, 'rm', 0);
+    rm.classList.add('locked');
+    const waiting = net.others().filter((p) => !rematch.votes.has(net!.factionOf(p))).length;
+    hud.toast(waiting ? (players === 3 ? `WAITING FOR ${waiting} MORE…` : 'WAITING FOR OPPONENT…') : 'REMATCH!', '#ffffff', true, 'rm', 0);
     maybeRematch();
   };
 }
 
-/** Convert local hands to world points for the opponent. */
+/** Convert local hands to world points for the opponents. */
 function encodeHands(frame: InputFrame): RemoteHand[] {
   const out: RemoteHand[] = [];
   for (const h of frame.hands) {
@@ -437,11 +481,13 @@ function encodeHands(frame: InputFrame): RemoteHand[] {
   return out;
 }
 
-/** Re-project the opponent's world-space hands into our screen space for HandViz. */
-function decodeHands(): [HandState, HandState] {
-  const stale = performance.now() - remoteHandsAt > 600;
+/** Re-project opponent `f`'s world-space hands into our screen space for HandViz. */
+function decodeHands(f: number): [HandState, HandState] {
+  const rh = remoteHands[f];
+  const stale = !rh || performance.now() - rh.at > 600;
+  const out = remoteHandStates[f];
   for (let i = 0; i < 2; i++) {
-    const r = remoteHands[i], h = remoteHandStates[i];
+    const r = rh?.h[i], h = out[i];
     if (stale || !r || !r.p || r.pts.length < 65) { h.present = false; h.landmarks = []; continue; }
     const lm = [];
     for (let k = 0; k < 21; k++) {
@@ -454,7 +500,7 @@ function decodeHands(): [HandState, HandState] {
     h.x = c.x; h.y = c.y;
     h.fist = r.g === 1; h.middle = r.g === 2; h.open = r.g === 3;
   }
-  return remoteHandStates;
+  return out;
 }
 
 async function start() {
@@ -505,7 +551,7 @@ function processEvents(events: GameEvent[], sim: Sim, isAttract: boolean) {
           audio.play('capture', { pan: pan(b.x) });
           stage.shake(0.18);
           recorder.banner(e.from === -1 ? 'CAPTURED!' : 'STOLEN!', factionColor(me));
-          hud.toast(e.from === -1 ? 'CAPTURED!' : `STOLEN FROM ${online ? 'THEM' : FACTION_NAMES[e.from].toUpperCase()}!`, factionColor(me), e.from === -1, 'cap', 0.5);
+          hud.toast(e.from === -1 ? 'CAPTURED!' : `STOLEN FROM ${online ? (players === 3 ? colorName(e.from).toUpperCase() : 'THEM') : FACTION_NAMES[e.from].toUpperCase()}!`, factionColor(me), e.from === -1, 'cap', 0.5);
         } else if (e.from === me) {
           audio.play('lost', { pan: pan(b.x) });
           hud.toast(`${b.type.toUpperCase()} LOST`, factionColor(e.to), true, 'lost', 0.5);
@@ -541,20 +587,33 @@ function processEvents(events: GameEvent[], sim: Sim, isAttract: boolean) {
         fx.fling(at(e.x, e.z, 0.2), v3b.set(e.vx, 5 + Math.random() * 4, e.vz), factionColor(e.faction));
         break;
       case 'eliminated':
-        if (!isAttract && e.faction !== me && !online) {
-          hud.toast(`${FACTION_NAMES[e.faction].toUpperCase()} ELIMINATED`, factionColor(e.faction), false, 'elim' + e.faction, 0);
+        if (isAttract) break;
+        if (e.faction !== me && (!online || players === 3)) {
+          hud.toast(`${(online ? colorName(e.faction) : FACTION_NAMES[e.faction]).toUpperCase()} ELIMINATED`, factionColor(e.faction), false, 'elim' + e.faction, 0);
           stage.shake(0.4);
+        } else if (e.faction === me && online && players === 3 && !sim.over) {
+          // knocked out of a brawl: the other two fight on; show our result (rematch waits for the end)
+          audio.play('defeat');
+          hud.toast('ELIMINATED', '#ff8095', false, 'end', 0);
+          recorder.banner('ELIMINATED', '#ff8095', true);
+          if (endTimer < 0) endTimer = 2.2;
         }
         break;
       case 'end':
-        if (!isAttract) {
+        if (!isAttract && online && state === 'results') {
+          // already watching our (eliminated) result: refresh it with the final winner
+          if (online === 'guest') { sim.over = true; sim.winner = e.winner; }
+          if (online === 'host') net?.broadcast('stats', { s: sim.statsOf });
+          setState('results');
+          maybeRematch();
+        } else if (!isAttract) {
           endTimer = 2.2;
           timeScale = 0.35;
           const won = e.winner === me;
           audio.play(won ? 'victory' : 'defeat');
           recorder.banner(won ? 'VICTORY' : 'DEFEAT', won ? '#ffe08a' : '#ff8095', true);
           hud.toast(won ? 'VICTORY' : 'DEFEAT', won ? '#ffe08a' : '#ff8095', false, 'end', 0);
-          if (online === 'host') net?.channel.send('stats', { s: sim.statsOf }, net.peer);
+          if (online === 'host') net?.broadcast('stats', { s: sim.statsOf });
           if (online === 'guest') { sim.over = true; sim.winner = e.winner; }
         }
         break;
@@ -605,8 +664,10 @@ function tick(now: number) {
       if (anyHand) noHandT += rawDt; else noHandT = 0;
       if (noHandT > 0.6) {
         noHandT = 0;
-        const vs = new URLSearchParams(location.search).get('vs');
-        if (vs) { roomCode = vs.toUpperCase(); matchmaker.privateRoom(roomCode); setState('room'); }
+        const q = new URLSearchParams(location.search);
+        const vs3 = q.get('vs3'), vs = q.get('vs');
+        if (vs3) joinRoom(vs3, 3);
+        else if (vs) joinRoom(vs, 2);
         else if (!progress.tutorialDone) startLevel(LEVELS[0]);
         else setState('menu');
       }
@@ -614,7 +675,7 @@ function tick(now: number) {
     case 'countdown': {
       const steps = ['3', '2', '1', 'GO!'];
       if (stateT > countdownStep * 0.7 && countdownStep < steps.length) {
-        if (countdownStep === 0) hud.toast(online ? `YOU ARE ${me === 0 ? 'BLUE' : 'RED'}` : currentLevel.name.toUpperCase(), online ? factionColor(me) : '#ffffff', false, 'lvl', 0);
+        if (countdownStep === 0) hud.toast(online ? `YOU ARE ${colorName(me).toUpperCase()}` : currentLevel.name.toUpperCase(), online ? factionColor(me) : '#ffffff', false, 'lvl', 0);
         hud.countdown(steps[countdownStep], countdownStep === 3 ? factionColor(me) : '#ffffff');
         audio.play(countdownStep === 3 ? 'go' : 'countdown');
         countdownStep++;
@@ -639,8 +700,9 @@ function tick(now: number) {
   const dt = rawDt * timeScale;
   if (world) {
     const { sim, ais } = world;
-    // online duels never pause: the pause screen is just an overlay with a forfeit button
-    const running = world.attract ? state !== 'play' : state === 'play' || (!!online && state === 'pause');
+    // online matches never pause: the pause screen is just an overlay with a forfeit button, and a
+    // player knocked out of a brawl keeps the battle (and, as host, the simulation) going behind their result
+    const running = world.attract ? state !== 'play' : state === 'play' || (!!online && (state === 'pause' || (state === 'results' && !sim.over)));
     if (running) {
       if (state === 'play') {
         commander.update(frame, sim, rawDt, stage.t, arrows);
@@ -679,7 +741,7 @@ function tick(now: number) {
         }
       }
     }
-    if (state === 'play' && sim instanceof GuestSim && sim.stalled) hud.toast('WAITING FOR OPPONENT…', '#ffd166', true, 'stall', 3);
+    if (state === 'play' && sim instanceof GuestSim && sim.stalled) hud.toast(players === 3 ? 'WAITING FOR THE HOST…' : 'WAITING FOR OPPONENT…', '#ffd166', true, 'stall', 3);
     if (state === 'play') {
       const ch = commander.charges;
       const charge = Math.max(ch[0], ch[1]);
@@ -715,7 +777,7 @@ function tick(now: number) {
   if (net && online && (state === 'play' || state === 'countdown')) {
     if (now >= handTimer) { handTimer = now + 1000 / 20; net.sendHand(encodeHands(frame)); }
   }
-  oppViz.update(online ? decodeHands() : [remoteHandStates[0], remoteHandStates[1]].map((h) => ({ ...h, present: false })), stage, rawDt, stage.t, ['hover', 'hover'], [0, 0], ground);
+  oppViz.forEach((v, f) => v.update(online && net && f !== me && f < players ? decodeHands(f) : NO_HANDS, stage, rawDt, stage.t, ['hover', 'hover'], [0, 0], ground));
   stage.render(rawDt, !NO_RENDER);
   if (recorder.recording && world) {
     recorder.setBars(world.sim.strength().map((_, f) => factionColor(f)), world.sim.strength());
@@ -788,7 +850,7 @@ window.__godhand = {
   resetProgress: () => { progress = { unlocked: 1, stars: {}, tutorialDone: false }; saveProgress(progress); },
   get net() { return net; },
   get online() { return online; },
-  quickMatch: () => { matchmaker.quick(); setState('searching'); },
-  joinRoom: (code: string) => { matchmaker.privateRoom(code); roomCode = code; setState('room'); },
+  quickMatch: (size: MatchSize = 2) => quickMatch(size),
+  joinRoom: (code: string, size: MatchSize = 2) => joinRoom(code, size),
   unlockAll: () => { progress.unlocked = LEVELS.length; progress.tutorialDone = true; saveProgress(progress); },
 };
