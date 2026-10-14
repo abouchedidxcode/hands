@@ -146,18 +146,37 @@ export class Fx {
 }
 ```
 
-## Palette
+## Palette — "LIVING ATLAS"
+
+The battlefield is an antique hand-inked map on aged parchment that comes alive.
 
 | role | hex |
 |---|---|
-| player | `#33e1ff` |
-| warlord 1 (Crimson) | `#ff3d5a` |
-| warlord 2 (Amber) | `#ffb22e` |
-| warlord 3 (Violet) | `#b46bff` |
-| neutral | `#b8b0a2` |
-| sea | `#0e3b52` → `#1d6f8a` shallows |
-| sand / grass / rock | `#e6cf8e` / `#6fae4f`,`#4f8a3b` / `#8d8a83` |
+| player (cerulean ink) | `#1f9be8` |
+| warlord 1 (Crimson, vermilion) | `#d8352a` |
+| warlord 2 (Amber, ochre) | `#e8a317` |
+| warlord 3 (Violet, imperial purple) | `#8e3fc8` |
+| neutral (sepia) | `#9a8c74` |
+| ink | `#1e120a` |
+| parchment | ≈ `#efe0bd` (procedural) |
+| gold leaf (hand, lightning, mana) | `#e2b23c` |
 
-Style: stylised low-poly, flat shading, warm key light + cool fill, soft shadows, bloom on
-emissive things (unit glow, hand, lightning, UI rings). Camera: perspective, ~58° tilt,
-looking at the board centre, slowly breathing.
+Style:
+- **Paper** (`render/atlas.ts` `ATLAS_GLSL`): procedural parchment (mottling, fibres, foxing, tide-mark
+  stains) on the ground and sea; contour lines + slope hachures on hills; the sea is an antique chart
+  (blue-grey wash, inked coastline, concentric water-lining ripples, wave squiggles).
+- **Territory** (signature): each owned base floods its land with a watercolour wash in its faction
+  colour (noisy Voronoi between hostile bases, pigment pooling at the wet edge, granulation). On a
+  capture the new pigment spreads outward from the base like ink in water. CPU-side `Atlas`
+  (`atlas.update(dt, bases, units)` per frame) writes two small RGBA DataTextures: territory (only
+  recomputed on ownership change, animated while spreading) and ink (army trails stippled onto the
+  map, ink blots from smites / clashes / captures, slowly fading).
+- **Ink pass** (`render/inkPass.ts`): renders the scene with depth, then draws wobbly, boiling
+  (~7 fps) ink outlines from depth edges, tonal cross-hatching in dark areas, paper grain and a
+  burnt, foxed vignette. Bloom only catches HDR gold (lightning, hand rim, charge orb).
+- Troop counts are **wax seals** (owned) or **inked paper tags** (neutral), Cinzel numerals.
+- The god hand is a translucent gold-ink hand with quill hatching on its shaded side; its shadow
+  falls on the paper and gets hatched by the ink pass.
+- DOM UI: parchment panels with double ink rules, wax-seal buttons, Cinzel / IM Fell English.
+
+Camera: perspective, ~58° tilt, looking at the board centre, slowly breathing.

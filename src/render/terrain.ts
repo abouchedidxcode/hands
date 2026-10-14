@@ -3,6 +3,7 @@
 import * as THREE from 'three';
 import { makeRng, makeSimplex2, fbm, ridged, smoothstep, clamp, lerp } from './terrainNoise';
 import { createWater } from './terrainWater';
+import { ATLAS_GLSL, atlasUniforms } from './atlas';
 import {
   pineGeometry, firGeometry, roundTreeGeometry, palmGeometry, bushGeometry,
   rockGeometry, grassGeometry, flowerGeometry,
@@ -357,31 +358,70 @@ export function buildTerrain(spec: TerrainSpec): Terrain {
 #endif` : '';
     m.onBeforeCompile = (sh) => {
       sh.uniforms.uTerrainTime = animTime;
-      sh.vertexShader = 'uniform float uTerrainTime;\nvarying vec2 vCloudW;\n' + sh.vertexShader
-        .replace('#include <begin_vertex>', '#include <begin_vertex>' + swayGlsl)
-        .replace('#include <project_vertex>', `#include <project_vertex>
+      sh.vertexShader = 'uniform float uTerrainTime;\n' + sh.vertexShader
+        .replace('#include <begin_vertex>', '#include <begin_vertex>' + swayGlsl);
+      // ink-and-wash miniature: muted, paper-toned pigment
+      sh.fragmentShader = sh.fragmentShader.replace('#include <color_fragment>', `#include <color_fragment>
   {
-    vec4 cw = vec4(transformed, 1.0);
-#ifdef USE_INSTANCING
-    cw = instanceMatrix * cw;
-#endif
-    vCloudW = (modelMatrix * cw).xz;
-  }`);
-      sh.fragmentShader = `uniform float uTerrainTime;
-varying vec2 vCloudW;
-float tcHash(vec2 p) { vec3 p3 = fract(vec3(p.xyx) * 0.1031); p3 += dot(p3, p3.yzx + 33.33); return fract((p3.x + p3.y) * p3.z); }
-float tcNoise(vec2 p) {
-  vec2 i = floor(p); vec2 f = fract(p); vec2 u = f * f * (3.0 - 2.0 * f);
-  return mix(mix(tcHash(i), tcHash(i + vec2(1.0, 0.0)), u.x), mix(tcHash(i + vec2(0.0, 1.0)), tcHash(i + vec2(1.0, 1.0)), u.x), u.y);
-}
-` + sh.fragmentShader.replace('#include <color_fragment>', `#include <color_fragment>
-  {
-    vec2 cp = vCloudW * 0.05 + vec2(uTerrainTime * 0.018, uTerrainTime * 0.006);
-    float cn = tcNoise(cp) * 0.65 + tcNoise(cp * 2.2 + 7.1) * 0.35;
-    diffuseColor.rgb *= 1.0 - 0.2 * smoothstep(0.55, 0.75, cn);
+    float l = dot(diffuseColor.rgb, vec3(0.299, 0.587, 0.114));
+    vec3 sepia = vec3(0.66, 0.56, 0.38) * (0.5 + 1.1 * l);
+    diffuseColor.rgb = mix(sepia, diffuseColor.rgb * vec3(1.0, 0.9, 0.62), 0.3);
   }`);
     };
-    m.customProgramCacheKey = () => 'godhand-terrain-' + sway.toFixed(4);
+    m.customProgramCacheKey = () => 'godhand-atlas-prop-' + sway.toFixed(4);
+    disposables.push(m);
+    return m;
+  }
+
+  /** The map itself: parchment, territory watercolour, ink trails, contour lines & hachures. */
+  function groundMaterial(): THREE.MeshStandardMaterial {
+    const m = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 1, metalness: 0 });
+    m.onBeforeCompile = (sh) => {
+      Object.assign(sh.uniforms, atlasUniforms);
+      sh.vertexShader = 'varying vec3 vAtW;\nvarying vec3 vAtN;\n' + sh.vertexShader
+        .replace('#include <project_vertex>', `#include <project_vertex>
+  vAtW = (modelMatrix * vec4(transformed, 1.0)).xyz;
+  vAtN = normalize(mat3(modelMatrix) * objectNormal);`);
+      sh.fragmentShader = 'varying vec3 vAtW;\nvarying vec3 vAtN;\n' + ATLAS_GLSL + sh.fragmentShader
+        .replace('#include <color_fragment>', `#include <color_fragment>
+  float atTerrA;
+  {
+    vec2 p = vAtW.xz;
+    vec3 paper = at_paper(p);
+    // faint verdigris wash in the lowlands near the coast + olive in the woods (from the old vertex colours)
+    float green = clamp((vColor.g - vColor.r) * 2.5, 0.0, 1.0);
+    paper *= mix(vec3(1.0), vec3(0.84, 0.88, 0.66), green * 0.45);
+    paper *= mix(vec3(1.0), vec3(0.93, 0.86, 0.72), smoothstep(0.6, 1.4, vAtW.y));
+    diffuseColor.rgb = at_wash(paper, p, atTerrA);
+  }`)
+        .replace('#include <opaque_fragment>', `
+  {
+    // ---- contour lines (every 0.2 height units, every 4th heavier) on hills
+    vec2 p = vAtW.xz;
+    float hj = vAtW.y + (at_noise(p * 1.3) - 0.5) * 0.03;
+    float hc = (hj - 0.02) / 0.2;
+    float fw = max(fwidth(hc), 1e-4);
+    float dl = abs(fract(hc + 0.5) - 0.5);
+    float idx = mod(floor(hc + 0.5), 4.0);
+    float wid = idx < 0.5 ? 1.5 : 0.85;
+    float hillK = smoothstep(0.42, 0.62, vAtW.y);
+    float brk = smoothstep(0.15, 0.35, at_noise(p * 0.7 + 3.0));
+    float contour = (1.0 - smoothstep(wid * fw * 0.5, wid * fw * 1.2, dl)) * hillK * (0.55 + 0.45 * brk);
+    // ---- hachures: short strokes running down the slope, laid out in bands between contours
+    vec3 n = normalize(vAtN);
+    float slope = length(n.xz) / max(n.y, 0.05);
+    vec2 tang = normalize(vec2(-n.z, n.x) + 1e-5);
+    float band = floor(hc * 2.0);
+    float s = dot(p, tang) * 7.0 + at_hash(vec2(band, 1.0)) * 7.0;
+    float stroke = 1.0 - smoothstep(0.08, 0.22, abs(fract(s) - 0.5));
+    float inBand = smoothstep(0.0, 0.12, fract(hc * 2.0)) * smoothstep(1.0, 0.82, fract(hc * 2.0));
+    float hach = stroke * inBand * smoothstep(0.18, 0.55, slope) * smoothstep(0.3, 0.5, vAtW.y);
+    float ink = clamp(contour * 0.7 + hach * 0.55, 0.0, 1.0);
+    outgoingLight = mix(outgoingLight, vec3(0.16, 0.10, 0.06) * (0.6 + 0.4 * dot(outgoingLight, vec3(0.33))), ink);
+  }
+#include <opaque_fragment>`);
+    };
+    m.customProgramCacheKey = () => 'godhand-atlas-ground';
     disposables.push(m);
     return m;
   }
@@ -396,6 +436,24 @@ float tcNoise(vec2 p) {
   const WS = rgb(COL.wetSand), SB1 = rgb(COL.seabedShallow), SB2 = rgb(COL.seabedDeep), SA = rgb(COL.sand);
   const RK = rgb(COL.rock), RL = rgb(COL.rockLight), RD = rgb(COL.rockDark);
   let ti = 0;
+
+  // smooth per-lattice-vertex normals (ink hatching reads the slope, facets would look low-poly)
+  const VN = new Float32Array(NV * 3);
+  (function vertexNormals() {
+    const e = 0.32;
+    for (let iz = 0; iz <= NZ; iz++) {
+      const z = minZ + iz * dz;
+      const off = (iz & 1) * 0.5;
+      for (let ix = 0; ix <= NX; ix++) {
+        const x = minX + (ix + off) * dx;
+        const k = iz * VX + ix;
+        const gx = heightAt(x - e, z) - heightAt(x + e, z);
+        const gz = heightAt(x, z - e) - heightAt(x, z + e);
+        const l = 1 / Math.sqrt(gx * gx + 4 * e * e + gz * gz);
+        VN[k * 3] = gx * l; VN[k * 3 + 1] = 2 * e * l; VN[k * 3 + 2] = gz * l;
+      }
+    }
+  })();
 
   function pushTri(a: number, b: number, c: number, ax: number, az: number, bx: number, bz: number, cx: number, cz: number) {
     const ay = H[a], by = H[b], cy = H[c];
@@ -444,8 +502,10 @@ float tcNoise(vec2 p) {
     pos[o] = ax; pos[o + 1] = ay; pos[o + 2] = az;
     pos[o + 3] = bx; pos[o + 4] = by; pos[o + 5] = bz;
     pos[o + 6] = cx; pos[o + 7] = cy; pos[o + 8] = cz;
+    const vi = [a, b, c];
     for (let k = 0; k < 9; k += 3) {
-      nor[o + k] = nx; nor[o + k + 1] = ny; nor[o + k + 2] = nz;
+      const v = vi[k / 3] * 3;
+      nor[o + k] = VN[v]; nor[o + k + 1] = VN[v + 1]; nor[o + k + 2] = VN[v + 2];
       col[o + k] = r; col[o + k + 1] = g; col[o + k + 2] = bl;
     }
     ti++;
@@ -476,7 +536,7 @@ float tcNoise(vec2 p) {
   groundGeo.setAttribute('normal', new THREE.BufferAttribute(nor, 3));
   groundGeo.setAttribute('color', new THREE.BufferAttribute(col, 3));
   groundGeo.computeBoundingSphere();
-  const groundMat = litMaterial(0.95, 0);
+  const groundMat = groundMaterial();
   const ground = new THREE.Mesh(groundGeo, groundMat);
   ground.name = 'ground';
   ground.receiveShadow = true;
@@ -662,8 +722,7 @@ float tcNoise(vec2 p) {
   addInstanced(bushGeometry(), treeMat, kinds.bush, true, 'bushes');
   addInstanced(rockGeometry(0), rockMat, kinds.rock0, true, 'rocksA');
   addInstanced(rockGeometry(1), rockMat, kinds.rock1, true, 'rocksB');
-  addInstanced(grassGeometry(), grassMat, kinds.grass, false, 'grass');
-  addInstanced(flowerGeometry(), grassMat, kinds.flower, false, 'flowers');
+  void grassMat; void grassGeometry; void flowerGeometry;
 
   // ---------------------------------------------------------------- API
   return {

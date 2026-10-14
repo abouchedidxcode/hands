@@ -9,11 +9,45 @@ export interface Highlight { hover: Set<number>; selected: Set<number>; target: 
 
 // ------------------------------------------------------------------ shared resources
 const stoneOwned = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.88, flatShading: true });
-const stoneNeutral = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.95, flatShading: true, color: '#aaa294' });
-const NEUTRAL_ROOF = '#857261';
+const stoneNeutral = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.95, flatShading: true, color: '#d6c8ac' });
+const NEUTRAL_ROOF = '#a8957a';
 const NEUTRAL_FLAG = '#cbbfa8';
 
-function radialTexture(stops: [number, number][]) {
+/** Hand-inked map symbol: double ring with tick marks and a faint wash, white on transparent. */
+function inkSymbolTexture() {
+  const S = 512;
+  const cv = document.createElement('canvas');
+  cv.width = cv.height = S;
+  const c = cv.getContext('2d')!;
+  const C = S / 2;
+  const wob = (r: number, k: number, ph: number) => {
+    c.beginPath();
+    for (let i = 0; i <= 120; i++) {
+      const a = (i / 120) * Math.PI * 2;
+      const rr = r * (1 + k * (Math.sin(a * 3 + ph) * 0.6 + Math.sin(a * 7 + ph * 2) * 0.4));
+      const x = C + Math.cos(a) * rr, y = C + Math.sin(a) * rr;
+      if (i === 0) c.moveTo(x, y); else c.lineTo(x, y);
+    }
+  };
+  const g = c.createRadialGradient(C, C, 0, C, C, C);
+  g.addColorStop(0, 'rgba(255,255,255,0.10)'); g.addColorStop(0.75, 'rgba(255,255,255,0.22)'); g.addColorStop(0.9, 'rgba(255,255,255,0.0)');
+  c.fillStyle = g; c.fillRect(0, 0, S, S);
+  c.strokeStyle = 'rgba(255,255,255,1)';
+  wob(C * 0.86, 0.012, 1.3); c.lineWidth = 9; c.stroke();
+  wob(C * 0.8, 0.01, 4.1); c.lineWidth = 3; c.stroke();
+  for (let i = 0; i < 24; i++) {
+    const a = (i / 24) * Math.PI * 2 + 0.05 * Math.sin(i * 5.1);
+    const r0 = C * 0.8, r1 = C * (i % 6 === 0 ? 0.97 : 0.9);
+    c.beginPath(); c.moveTo(C + Math.cos(a) * r0, C + Math.sin(a) * r0); c.lineTo(C + Math.cos(a) * r1, C + Math.sin(a) * r1);
+    c.lineWidth = i % 6 === 0 ? 6 : 3; c.stroke();
+  }
+  const t = new THREE.CanvasTexture(cv);
+  t.colorSpace = THREE.SRGBColorSpace;
+  t.anisotropy = 4;
+  return t;
+}
+
+export function radialTexture(stops: [number, number][]) {
   const S = 256;
   const cv = document.createElement('canvas');
   cv.width = cv.height = S;
@@ -101,9 +135,9 @@ export class BaseViews {
   private views: View[] = [];
   private flagGeo = flagGeometry(false);
   private ragGeo = flagGeometry(true);
-  private discTex = radialTexture([[0, 0.2], [0.55, 0.26], [0.8, 0.5], [0.9, 0.42], [1, 0]]);
+  private discTex = inkSymbolTexture();
   private discGeo = (() => { const g = new THREE.CircleGeometry(1, 48); g.rotateX(-Math.PI / 2); return g; })();
-  private ringGeo = flatRing(0.95, 1.0);
+  private ringGeo = flatRing(0.88, 1.0);
   private neutralRingGeo = dashedRing(0.95, 1.0, 20, 0.55);
   private selGeo = dashedRing(0.88, 1.0, 14, 0.62);
   private tgtGeo = reticle();
@@ -142,18 +176,18 @@ export class BaseViews {
       const R = b.radius;
       const discMat = new THREE.MeshBasicMaterial({ map: this.discTex, transparent: true, depthWrite: false, toneMapped: false, opacity: 1 });
       const disc = new THREE.Mesh(this.discGeo, discMat);
-      disc.position.y = 0.03; disc.scale.setScalar(R * 1.85); disc.renderOrder = 1;
+      disc.position.y = 0.03; disc.scale.setScalar(R * 1.95); disc.renderOrder = 1;
       const ringMat = new THREE.MeshBasicMaterial({ transparent: true, depthWrite: false, toneMapped: false });
       const ring = new THREE.Mesh(this.ringGeo, ringMat);
       ring.position.y = 0.05; ring.scale.setScalar(R * 1.6); ring.renderOrder = 2;
 
-      const selMat = new THREE.MeshBasicMaterial({ color: '#ffffff', transparent: true, opacity: 0, toneMapped: false, depthWrite: false, blending: THREE.AdditiveBlending });
+      const selMat = new THREE.MeshBasicMaterial({ color: '#ffffff', transparent: true, opacity: 0, toneMapped: false, depthWrite: false });
       const sel = new THREE.Mesh(this.selGeo, selMat);
       sel.position.y = 0.07; sel.scale.setScalar(R * 1.85); sel.renderOrder = 3; sel.visible = false;
-      const tgtMat = new THREE.MeshBasicMaterial({ color: '#ffe066', transparent: true, opacity: 0, toneMapped: false, depthWrite: false, blending: THREE.AdditiveBlending });
+      const tgtMat = new THREE.MeshBasicMaterial({ color: '#ffe066', transparent: true, opacity: 0, toneMapped: false, depthWrite: false });
       const tgt = new THREE.Mesh(this.tgtGeo, tgtMat);
       tgt.position.y = 0.08; tgt.scale.setScalar(R * 1.9); tgt.renderOrder = 4; tgt.visible = false;
-      const rippleMat = new THREE.MeshBasicMaterial({ color: '#ffe066', transparent: true, opacity: 0, toneMapped: false, depthWrite: false, blending: THREE.AdditiveBlending });
+      const rippleMat = new THREE.MeshBasicMaterial({ color: '#ffe066', transparent: true, opacity: 0, toneMapped: false, depthWrite: false });
       const ripple = new THREE.Mesh(this.rippleGeo, rippleMat);
       ripple.position.y = 0.08; ripple.renderOrder = 4; ripple.visible = false;
       g.add(disc, ring, sel, tgt, ripple);
@@ -199,12 +233,12 @@ export class BaseViews {
     v.flagMat.emissiveIntensity = neutral ? 0 : 0.35;
     v.ring.geometry = neutral ? this.neutralRingGeo : this.ringGeo;
     this.tmpColor.set(col);
-    if (!neutral) this.tmpColor.multiplyScalar(1.25);
+    if (!neutral) this.tmpColor.multiplyScalar(0.9);
     v.ringTarget.copy(this.tmpColor);
     v.ringMat.color.copy(this.tmpColor);
     v.ringMat.opacity = neutral ? 0.55 : 1;
-    v.discMat.color.set(neutral ? '#000000' : col);
-    v.discMat.opacity = neutral ? 0.22 : 0.85;
+    v.discMat.color.set(neutral ? '#4a3826' : '#2a1a0e');
+    v.discMat.opacity = neutral ? 0.5 : 0.85;
     if (v.rangeMat) v.rangeMat.color.set(col);
   }
 
@@ -250,13 +284,13 @@ export class BaseViews {
 
       const lp = Math.max(0, A) * 0.9 + (age < 0.3 ? (0.3 - age) : 0);
       const ls = (1 + Math.min(0.3, b.troops / 260) + v.tick * 0.14 + lp + (hit ? 0.1 : 0)) ;
-      v.label.sprite.scale.set(Label.W * ls, Label.W * 0.5 * ls, 1);
+      v.label.sprite.scale.set(Label.W * ls, Label.W * 0.625 * ls, 1);
       v.label.sprite.position.y = v.y + v.labelY + wob * 0.5;
 
       // ---- ownership ring: flash white when hit, breathe gently
-      if (wob > 0) v.ringMat.color.setRGB(1.6, 0.5, 0.5);
+      if (wob > 0) v.ringMat.color.setRGB(0.05, 0.02, 0.01);
       else v.ringMat.color.lerp(v.ringTarget, k);
-      v.discMat.opacity = neutral ? 0.22 : 0.75 + Math.sin(t * 2 + b.id) * 0.1;
+      v.discMat.opacity = neutral ? 0.5 : 0.8;
 
       // ---- selection / hover / target
       const sel = hl.selected.has(b.id), hov = hl.hover.has(b.id), tgt = hl.target.has(b.id);
@@ -265,7 +299,7 @@ export class BaseViews {
       v.sel.visible = v.selAmt > 0.01;
       if (v.sel.visible) {
         v.selMat.opacity = v.selAmt;
-        v.selMat.color.set(sel ? '#bff8ff' : '#e8fdff');
+        v.selMat.color.set(sel ? '#c79a2b' : '#3a2616');
         v.sel.rotation.y += dt * (sel ? 1.4 : 0.5);
         v.sel.scale.setScalar(b.radius * (sel ? 1.8 + Math.sin(t * 9) * 0.04 : 1.9));
       }
@@ -273,8 +307,8 @@ export class BaseViews {
       v.tgt.visible = v.ripple.visible = v.tgtAmt > 0.01;
       if (v.tgt.visible) {
         const friendly = b.owner === 0;
-        const c = friendly ? '#7ff3ff' : '#ffd84a';
-        v.tgtMat.color.set(c); v.rippleMat.color.set(c);
+        const c = friendly ? '#1f6fb0' : '#1e120a';
+        v.tgtMat.color.set(c); v.rippleMat.color.set(friendly ? '#1f9be8' : '#b8860b');
         v.tgtMat.opacity = v.tgtAmt;
         // reticle breathes inward
         const ph = (t * 1.6) % 1;

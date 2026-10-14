@@ -81,7 +81,7 @@ function soldierMaterial() {
         vTint = aTint;`);
     sh.fragmentShader = sh.fragmentShader
       .replace('#include <common>', '#include <common>\nvarying float vTint;')
-      .replace('#include <emissivemap_fragment>', '#include <emissivemap_fragment>\ntotalEmissiveRadiance += diffuseColor.rgb * vTint * 0.32;');
+      .replace('#include <emissivemap_fragment>', '#include <emissivemap_fragment>\ntotalEmissiveRadiance += diffuseColor.rgb * vTint * 0.22;');
   };
   mat.customProgramCacheKey = () => 'godhand-soldier';
   return mat;
@@ -107,9 +107,10 @@ export class UnitViews {
     this.mesh.count = 0;
     this.mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
 
-    const dotGeo = new THREE.PlaneGeometry(0.62, 0.62);
+    const dotGeo = new THREE.PlaneGeometry(0.5, 0.5);
     dotGeo.rotateX(-Math.PI / 2);
-    const dotMat = new THREE.MeshBasicMaterial({ map: dotTexture(), transparent: true, opacity: 0.9, toneMapped: false, depthWrite: false, blending: THREE.AdditiveBlending });
+    // ink-blot shadow token under each soldier (reads on bright paper)
+    const dotMat = new THREE.MeshBasicMaterial({ map: dotTexture(), transparent: true, opacity: 0.85, toneMapped: false, depthWrite: false });
     this.dots = new THREE.InstancedMesh(dotGeo, dotMat, MAX);
     this.dots.frustumCulled = false;
     this.dots.count = 0;
@@ -117,7 +118,7 @@ export class UnitViews {
     this.dots.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
 
     this.colors = FACTION_COLORS.map((c) => new THREE.Color(c));
-    this.dotColors = FACTION_COLORS.map((c) => new THREE.Color(c).multiplyScalar(0.8));
+    this.dotColors = FACTION_COLORS.map((c) => new THREE.Color(c).multiplyScalar(0.45));
     for (let i = 0; i < MAX; i++) { this.mesh.setColorAt(i, this.colors[0]); this.dots.setColorAt(i, this.dotColors[0]); }
     this.mesh.instanceColor!.setUsage(THREE.DynamicDrawUsage);
     this.dots.instanceColor!.setUsage(THREE.DynamicDrawUsage);
@@ -134,7 +135,7 @@ export class UnitViews {
       const phase = t * 13 + u.id * 1.7;
       const sn = Math.sin(phase);
       const bob = Math.abs(sn) * 0.07;
-      const size = 0.94 + ((u.id * 0.61803) % 1) * 0.12;
+      const size = 1.12 + ((u.id * 0.61803) % 1) * 0.12;
       this.p.set(u.x, y + bob, u.z);
       this.e.set(0.12 + Math.abs(sn) * 0.05, Math.atan2(u.dx, u.dz), sn * 0.13);
       this.q.setFromEuler(this.e);

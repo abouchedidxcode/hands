@@ -473,7 +473,6 @@ class Rings {
       fragmentShader: RING_FS,
       transparent: true,
       depthWrite: false,
-      blending: THREE.AdditiveBlending,
       side: THREE.DoubleSide,
       toneMapped: false,
       polygonOffset: true,
@@ -760,15 +759,15 @@ export class Fx {
       this.group.add(m);
     }
 
-    this.flashLight = new THREE.PointLight(0xbfd8ff, 0, 40, 1.6);
-    this.chargeLight = new THREE.PointLight(0x7fd4ff, 0, 9, 1.6);
+    this.flashLight = new THREE.PointLight(0xffd890, 0, 40, 1.6);
+    this.chargeLight = new THREE.PointLight(0xffc060, 0, 9, 1.6);
     this.group.add(this.flashLight, this.chargeLight);
 
     const spriteMat = (c: number) => new THREE.SpriteMaterial({
       map: this.glowTex, color: c, blending: THREE.AdditiveBlending, depthWrite: false,
       depthTest: false, transparent: true, toneMapped: false,
     });
-    this.chargeHalo = new THREE.Sprite(spriteMat(0x66ccff));
+    this.chargeHalo = new THREE.Sprite(spriteMat(0xffcc66));
     this.chargeCore = new THREE.Sprite(spriteMat(0xffffff));
     this.chargeHalo.renderOrder = 7;
     this.chargeCore.renderOrder = 8;
@@ -802,16 +801,19 @@ export class Fx {
   sparks(p: THREE.Vector3, color: THREE.ColorRepresentation, n = 6): void {
     const c = this.col.set(color);
     const cr = c.r, cg = c.g, cb = c.b;
+    // LIVING ATLAS: clashes fling ink droplets (pigment, normal-blended) plus a couple of gold flecks
     for (let i = 0; i < n; i++) {
       const a = Math.random() * TAU;
-      const up = rnd(0.15, 1);
-      const sp = rnd(2, 5.5);
-      const h = Math.sqrt(1 - up * up * 0.6);
-      const hot = (i & 1) === 0;
-      this.streaks.spawn(p.x, p.y + 0.08, p.z, Math.cos(a) * h * sp, up * sp, Math.sin(a) * h * sp, rnd(0.14, 0.3),
-        hot ? 3.2 : cr * 2, hot ? 2.6 : cg * 2, hot ? 1.5 : cb * 2, 1, 0.04, 0.035, 14, 0, p.y);
+      const sp = rnd(1.5, 4);
+      const dark = (i & 1) === 0;
+      this.smoke.spawn(p.x, p.y + 0.12, p.z, Math.cos(a) * sp, rnd(1.5, 4), Math.sin(a) * sp, rnd(0.35, 0.6), 0.16, 0.1,
+        dark ? 0.06 : cr * 0.6, dark ? 0.04 : cg * 0.6, dark ? 0.03 : cb * 0.6, 0.95, 14, 0.5, 0, p.y + 0.02);
+      if (i < 2) {
+        const up = rnd(0.3, 1);
+        this.streaks.spawn(p.x, p.y + 0.08, p.z, Math.cos(a) * sp, up * sp * 1.4, Math.sin(a) * sp, rnd(0.12, 0.25),
+          3.4, 2.5, 0.9, 1, 0.035, 0.03, 14, 0, p.y);
+      }
     }
-    this.glow.spawn(p.x, p.y + 0.1, p.z, 0, 0, 0, 0.12, 0.7, 0.3, 0.5 + cr * 1.5, 0.45 + cg * 1.5, 0.35 + cb * 1.5, 0.9);
   }
 
   /** Capture celebration in faction colour. */
@@ -834,7 +836,7 @@ export class Fx {
       const white = Math.random() < 0.35;
       const vy = rnd(6, 12) * s;
       this.streaks.spawn(p.x, p.y + 0.4, p.z, Math.cos(a) * h, vy, Math.sin(a) * h, rnd(0.8, 1.4),
-        white ? 3 : cr * 2.2, white ? 3 : cg * 2.2, white ? 3 : cb * 2.2, 1, 0.06 * s, 0.03, 10, 0.9, p.y);
+        white ? 3.6 : cr * 2.2, white ? 2.8 : cg * 2.2, white ? 1.0 : cb * 2.2, 1, 0.06 * s, 0.03, 10, 0.9, p.y);
       this.glow.spawn(p.x, p.y + 0.4, p.z, Math.cos(a) * h * 0.8, vy * 0.9, Math.sin(a) * h * 0.8, rnd(0.9, 1.6),
         0.14 * s, 0.06 * s, cr * 2 + 0.6, cg * 2 + 0.6, cb * 2 + 0.6, 1, 9, 1.0, 0.8);
     }
@@ -859,15 +861,15 @@ export class Fx {
     this.flashLight.position.set(x, y + 3, z);
 
     // impact glows
-    this.glow.spawn(x, y + 0.4, z, 0, 0, 0, 0.2, 2.6 * R / 3.2, 4 * R / 3.2, 2.2, 2.5, 3.6, 0.9);
-    this.glow.spawn(x, y + 0.3, z, 0, 0, 0, 0.7, 1.8, 2.6, 3.5, 2.0, 0.8, 1);
+    this.glow.spawn(x, y + 0.4, z, 0, 0, 0, 0.2, 2.0 * R / 3.2, 3 * R / 3.2, 1.8, 1.3, 0.5, 0.8);
+    this.glow.spawn(x, y + 0.3, z, 0, 0, 0, 0.7, 1.4, 2.0, 1.8, 1.0, 0.35, 1);
     // ground flash + glowing crater
-    this.rings.spawn(x, y, z, R * 1.1, R * 1.3, 0.25, 0.7, 1.0, 2.0, 0.8, 1, 1, 1);
+    this.rings.spawn(x, y, z, R * 1.1, R * 1.3, 0.25, 2.0, 1.4, 0.5, 0.8, 1, 1, 1);
     this.rings.spawn(x, y, z, R * 0.65, R * 0.55, 1.8, 3.2, 1.1, 0.25, 0.9, 1, 1, 1, 0.05);
     // shockwaves
     this.rings.spawn(x, y, z, 0.3, R * 1.12, 0.55, 3.4, 2.4, 1.3, 1, 0.5, 0.15, 2);
-    this.rings.spawn(x, y, z, 0.5, R * 1.9, 0.85, 1.0, 1.5, 3.2, 0.8, 0.25, 0.08, 0, 0.06);
-    this.rings.spawn(x, y, z, R * 0.98, R * 1.02, 0.9, 1.6, 1.8, 3, 0.5, 0.08, 0.04, 0, 0.3);
+    this.rings.spawn(x, y, z, 0.5, R * 1.9, 0.85, 0.12, 0.07, 0.03, 0.8, 0.25, 0.08, 2, 0.06);
+    this.rings.spawn(x, y, z, R * 0.98, R * 1.02, 0.9, 2.6, 1.9, 0.8, 0.5, 0.08, 0.04, 0, 0.3);
 
     // dust shock ring along the ground
     for (let i = 0; i < 30; i++) {
@@ -890,7 +892,7 @@ export class Fx {
       const h = Math.sqrt(1 - up * up * 0.7);
       const blue = Math.random() < 0.4;
       this.streaks.spawn(x, y + 0.2, z, Math.cos(a) * h * sp, up * sp, Math.sin(a) * h * sp, rnd(0.35, 0.9),
-        blue ? 2.4 : 4, blue ? 3 : 2.8, blue ? 4.6 : 1.4, 1, 0.09, 0.03, 20, 0.6, y);
+        blue ? 4.2 : 4, blue ? 3.4 : 2.8, blue ? 1.8 : 1.4, 1, 0.09, 0.03, 20, 0.6, y);
     }
     // debris chunks
     for (let i = 0; i < 40; i++) {
@@ -1239,9 +1241,9 @@ export class Fx {
         const o = i * 8;
         const w = s[o + 6], br = s[o + 7] * env;
         // wide blue halo
-        L.seg(s[o], s[o + 1], s[o + 2], s[o + 3], s[o + 4], s[o + 5], w * 5, w * 5, 0.5, 0.75, 2.2, 0.35 * br, 0.35 * br);
+        L.seg(s[o], s[o + 1], s[o + 2], s[o + 3], s[o + 4], s[o + 5], w * 5, w * 5, 2.2, 1.3, 0.35, 0.35 * br, 0.35 * br);
         // hot white core
-        L.seg(s[o], s[o + 1], s[o + 2], s[o + 3], s[o + 4], s[o + 5], w, w, 3.4, 3.6, 4.6, br, br);
+        L.seg(s[o], s[o + 1], s[o + 2], s[o + 3], s[o + 4], s[o + 5], w, w, 4.6, 3.8, 2.0, br, br);
       }
     }
   }
@@ -1271,9 +1273,9 @@ export class Fx {
     this.chargeHalo.scale.set(hs, hs, 1);
     this.chargeCore.scale.set(cs, cs, 1);
     const hi = (0.4 + 1.0 * lv) * vis;
-    (this.chargeHalo.material as THREE.SpriteMaterial).color.setRGB(0.25 * hi, 0.65 * hi, 1.5 * hi);
+    (this.chargeHalo.material as THREE.SpriteMaterial).color.setRGB(1.5 * hi, 0.95 * hi, 0.25 * hi);
     const ci = (1.2 + 2.5 * lv) * vis;
-    (this.chargeCore.material as THREE.SpriteMaterial).color.setRGB(0.85 * ci, 0.95 * ci, 1.1 * ci);
+    (this.chargeCore.material as THREE.SpriteMaterial).color.setRGB(1.1 * ci, 0.95 * ci, 0.7 * ci);
 
     this.chargeLight.position.copy(P);
     this.chargeLight.intensity = (3 + 18 * lv * lv) * vis * (0.8 + 0.4 * Math.random());
@@ -1309,8 +1311,8 @@ export class Fx {
         const w = 0.045 * (1 - 0.6 * f);
         const a = ab * flick * (1 - 0.6 * f);
         const A = this.arcPts;
-        L.seg(A[o], A[o + 1], A[o + 2], A[o + 3], A[o + 4], A[o + 5], w * 4, w * 4, 0.4, 0.75, 2, a * 0.4, a * 0.4);
-        L.seg(A[o], A[o + 1], A[o + 2], A[o + 3], A[o + 4], A[o + 5], w, w, 2.6, 3.2, 4.4, a, a);
+        L.seg(A[o], A[o + 1], A[o + 2], A[o + 3], A[o + 4], A[o + 5], w * 4, w * 4, 2.0, 1.2, 0.3, a * 0.4, a * 0.4);
+        L.seg(A[o], A[o + 1], A[o + 2], A[o + 3], A[o + 4], A[o + 5], w, w, 4.4, 3.6, 1.8, a, a);
       }
     }
     // orbiting motes (short curved trails)
@@ -1325,7 +1327,7 @@ export class Fx {
         const a2 = ang - k * 0.22 * Math.sign(M[o + 6]);
         const c = Math.cos(a2) * rr, s = Math.sin(a2) * rr;
         const x = P.x + M[o] * c + M[o + 3] * s, y = P.y + M[o + 1] * c + M[o + 4] * s, z = P.z + M[o + 2] * c + M[o + 5] * s;
-        if (k > 0) L.seg(px, py, pz, x, y, z, k === 1 ? 0.04 : 0.025, k === 1 ? 0.025 : 0, 1.4, 2.4, 3.6,
+        if (k > 0) L.seg(px, py, pz, x, y, z, k === 1 ? 0.04 : 0.025, k === 1 ? 0.025 : 0, 3.6, 2.4, 0.9,
           vis * (k === 1 ? 1 : 0.5), vis * (k === 1 ? 0.5 : 0));
         px = x; py = y; pz = z;
       }

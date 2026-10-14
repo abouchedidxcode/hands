@@ -1,5 +1,6 @@
 // Stylised animated water: depth-tinted, sun glints, animated shore foam.
 import * as THREE from 'three';
+import { ATLAS_GLSL, atlasUniforms } from './atlas';
 
 const vert = /* glsl */ `
 #include <common>
@@ -22,33 +23,13 @@ uniform sampler2D uCoast;
 uniform vec4 uCoastRect;   // minX, minZ, 1/sizeX, 1/sizeZ
 uniform float uDepthScale;
 uniform float uDistScale;
-uniform vec3 uDeep;
-uniform vec3 uMid;
-uniform vec3 uShallow;
-uniform vec3 uLagoon;
-uniform vec3 uFoam;
-uniform vec3 uSunDir;
-uniform vec3 uSunColor;
-uniform vec3 uSky;
+uniform vec3 uSeaTint;
+uniform vec3 uInk;
 varying vec3 vWorld;
+${ATLAS_GLSL}
 
-float hash12(vec2 p) {
-  vec3 p3 = fract(vec3(p.xyx) * 0.1031);
-  p3 += dot(p3, p3.yzx + 33.33);
-  return fract((p3.x + p3.y) * p3.z);
-}
-float vnoise(vec2 p) {
-  vec2 i = floor(p);
-  vec2 f = fract(p);
-  vec2 u = f * f * (3.0 - 2.0 * f);
-  return mix(mix(hash12(i), hash12(i + vec2(1.0, 0.0)), u.x),
-             mix(hash12(i + vec2(0.0, 1.0)), hash12(i + vec2(1.0, 1.0)), u.x), u.y);
-}
-vec2 wave(vec2 p, vec2 d, float f, float s, float a) {
-  float ph = dot(d, p) * f + uTime * s;
-  return d * (f * a * cos(ph));
-}
-
+// Antique chart sea: parchment with a blue-grey wash, an inked coastline, concentric
+// "water-lining" ripples hugging the coast, and little wave squiggles out at sea.
 void main() {
   vec2 p = vWorld.xz;
   float t = uTime;
@@ -58,59 +39,37 @@ void main() {
   float depth = cd.r * uDepthScale;
   float dist = cd.g * uDistScale;
 
-  // ---- wave normal (sum of directional sines, domain-warped) ----
-  vec2 warp = vec2(vnoise(p * 0.18 + t * 0.05), vnoise(p * 0.18 - 7.3 - t * 0.04)) * 2.4;
-  vec2 q = p + warp;
-  vec2 g = vec2(0.0);
-  g += wave(q, normalize(vec2(1.0, 0.35)), 0.55, 1.1, 0.10);
-  g += wave(q, normalize(vec2(-0.4, 1.0)), 0.80, 1.4, 0.07);
-  g += wave(q, normalize(vec2(0.7, -0.8)), 1.35, 1.9, 0.045);
-  g += wave(q, normalize(vec2(-1.0, -0.2)), 2.10, 2.6, 0.03);
-  vec3 n = normalize(vec3(-g.x, 1.0, -g.y));
+  vec3 paper = at_paper(p);
+  float wash = 0.55 + 0.4 * smoothstep(0.3, 9.0, dist) + 0.1 * (at_fbm(p * 0.2 + t * 0.01) - 0.5);
+  vec3 col = paper * mix(vec3(1.0), uSeaTint, clamp(wash, 0.0, 1.0));
+  // pigment pools along the shore
+  col *= 1.0 - 0.22 * exp(-dist * 2.2);
+  float terrA;
+  col = at_wash(col, p, terrA);
 
-  // ---- base colour by depth ----
-  float dN = clamp(depth / 3.2, 0.0, 1.0);
-  vec3 col = mix(uLagoon, uShallow, smoothstep(0.0, 0.16, dN));
-  col = mix(col, uMid, smoothstep(0.1, 0.5, dN));
-  col = mix(col, uDeep, smoothstep(0.45, 1.0, dN));
-  float big = vnoise(p * 0.045 + vec2(t * 0.006, 0.0));
-  col *= 0.9 + 0.2 * big;
+  float d = dist + (at_noise(p * 0.9) - 0.5) * 0.12;
+  // ---- coastline: heavy ink stroke
+  float fwd = max(fwidth(dist), 1e-3);
+  float coast = 1.0 - smoothstep(0.05, 0.05 + fwd * 1.5 + 0.04, d);
+  // ---- water lines: ripples hugging the coast, spacing widening seaward, gently breathing
+  float rr = sqrt(max(d - 0.12, 0.0)) * 3.2 - t * 0.08;
+  float frr = max(fwidth(rr), 1e-3);
+  float rip = 1.0 - smoothstep(frr * 0.6, frr * 1.6, abs(fract(rr) - 0.5) * 1.0);
+  rip *= (1.0 - smoothstep(0.8, 3.4, d)) * smoothstep(0.1, 0.2, d);
+  rip *= 0.55 + 0.45 * smoothstep(0.2, 0.45, at_noise(p * 0.6 + 2.0));
+  // ---- wave squiggles out at sea
+  vec2 g = p * vec2(0.42, 0.85) + vec2(t * 0.03, 0.0);
+  vec2 cell = floor(g);
+  vec2 q = fract(g);
+  float hsh = at_hash(cell);
+  float yc = 0.5 + 0.11 * sin((q.x + hsh) * 6.2831 * 1.5) + (hsh - 0.5) * 0.3;
+  float sq = 1.0 - smoothstep(0.025, 0.06, abs(q.y - yc));
+  sq *= smoothstep(0.15, 0.3, q.x) * smoothstep(0.85, 0.7, q.x) * step(hsh, 0.42);
+  sq *= smoothstep(3.0, 5.0, d);
+  float ink = clamp(coast * 0.95 + rip * 0.5 + sq * 0.45, 0.0, 1.0);
+  col = mix(col, uInk, ink);
 
-  // ---- lighting ----
-  vec3 V = normalize(cameraPosition - vWorld);
-  float ndl = clamp(dot(n, uSunDir), 0.0, 1.0);
-  col *= 0.78 + 0.32 * ndl;
-  float fres = pow(1.0 - clamp(dot(n, V), 0.0, 1.0), 4.0);
-  col = mix(col, uSky, fres * 0.35);
-  vec3 H = normalize(uSunDir + V);
-  float spec = pow(max(dot(n, H), 0.0), 140.0);
-  // glitter: sparse twinkling cells
-  vec2 gc = p * 2.6 + n.xz * 6.0;
-  float gl = vnoise(gc + vec2(t * 0.7, -t * 0.4)) * vnoise(gc * 1.7 - vec2(t * 0.5, t * 0.9));
-  // fade out where the glitter cells get smaller than a pixel (distance) to avoid noisy speckle
-  float px = length(fwidth(p)) * 2.6;
-  float glitter = smoothstep(0.68, 0.86, gl) * (0.3 + 0.7 * smoothstep(0.15, 0.6, dN)) * (1.0 - smoothstep(0.35, 0.9, px)) * (1.0 - 0.6 * smoothstep(0.6, 1.0, dN));
-  col += uSunColor * (spec * 0.9 + glitter * 0.3);
-
-  // ---- shallow caustics ----
-  float cz = vnoise(p * 1.6 + vec2(t * 0.35, t * 0.22)) + vnoise(p * 2.3 - vec2(t * 0.28, -t * 0.31));
-  float caust = smoothstep(0.85, 1.0, 1.0 - abs(cz - 1.0) * 1.0);
-  col += vec3(0.55, 0.85, 0.8) * caust * 0.22 * (1.0 - smoothstep(0.05, 0.35, dN));
-
-  // ---- foam ----
-  float fn = vnoise(p * 1.4 + vec2(t * 0.25, -t * 0.12));
-  float fn2 = vnoise(p * 3.1 - vec2(t * 0.4, t * 0.2));
-  float edge = 1.0 - smoothstep(0.0, 0.18 + 0.22 * fn + 0.08 * sin(t * 1.3 + fn * 6.0), dist);
-  edge = max(edge, 1.0 - smoothstep(0.0, 0.06, depth));
-  float ph = dist * 2.2 + t * 1.25 + fn * 2.8;
-  float band = smoothstep(0.78, 0.93, sin(ph)) * (1.0 - smoothstep(0.5, 2.6, dist)) * smoothstep(0.3, 0.55, fn2 + 0.15);
-  float foam = clamp(edge * 0.95 + band * 0.7, 0.0, 1.0);
-  col = mix(col, uFoam, foam);
-
-  float alpha = mix(0.5, 1.0, smoothstep(0.0, 1.4, depth));
-  alpha = max(alpha, foam * 0.95);
-
-  gl_FragColor = vec4(col, alpha);
+  gl_FragColor = vec4(col, 1.0);
   #include <tonemapping_fragment>
   #include <colorspace_fragment>
   #include <fog_fragment>
@@ -133,7 +92,6 @@ export function createWater(opts: {
   distScale: number;
 }): WaterParts {
   const time = { value: 0 };
-  const sun = new THREE.Vector3(-20, 30, 10).normalize();
   const uniforms = THREE.UniformsUtils.merge([THREE.UniformsLib.fog]) as Record<string, THREE.IUniform>;
   Object.assign(uniforms, {
     uTime: time,
@@ -141,20 +99,15 @@ export function createWater(opts: {
     uCoastRect: { value: new THREE.Vector4(opts.rect.minX, opts.rect.minZ, 1 / opts.rect.sizeX, 1 / opts.rect.sizeZ) },
     uDepthScale: { value: opts.depthScale },
     uDistScale: { value: opts.distScale },
-    uDeep: { value: new THREE.Color('#0c3a5a') },
-    uMid: { value: new THREE.Color('#14769a') },
-    uShallow: { value: new THREE.Color('#25b3bf') },
-    uLagoon: { value: new THREE.Color('#6fe0d2') },
-    uFoam: { value: new THREE.Color('#f4fbff') },
-    uSunDir: { value: sun },
-    uSunColor: { value: new THREE.Color('#fff1cf') },
-    uSky: { value: new THREE.Color('#bfe3ff') },
+    uSeaTint: { value: new THREE.Color('#a9cfc8') },
+    uInk: { value: new THREE.Color('#2a1c12') },
+    ...atlasUniforms,
   });
   const material = new THREE.ShaderMaterial({
     uniforms,
     vertexShader: vert,
     fragmentShader: frag,
-    transparent: true,
+    transparent: false,
     depthWrite: true,
     fog: true,
   });

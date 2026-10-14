@@ -26,7 +26,7 @@ const frames = async (n = 2) => {
 const ff = (sec) => page.evaluate((s) => window.__godhand.fastForward(s), sec);
 const shot = async (name) => { await page.screenshot({ path: `${out}/${name}.png` }); console.log('shot', name); };
 
-await page.goto(url);
+await page.goto(url, { waitUntil: 'domcontentloaded' });
 await wait(2500);
 await shot('01-boot');
 await page.click('#b-start');

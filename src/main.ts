@@ -20,6 +20,7 @@ import type { InputFrame } from './input/types';
 import { Commander } from './play/commander';
 import { Tutorial } from './play/tutorial';
 import { DragArrows } from './render/arrows';
+import { atlas } from './render/atlas';
 import { BaseViews } from './render/bases';
 import { Fx } from './render/fx';
 import { HandViz } from './render/handViz';
@@ -53,7 +54,7 @@ const fx = new Fx(stage.scene);
 const arrows = new DragArrows();
 const handViz = new HandViz();
 /** The online opponent's hands, re-projected from their world positions. */
-const oppViz = new HandViz();
+const oppViz = new HandViz([2, 3]);
 stage.scene.add(arrows.group, handViz.group, oppViz.group);
 buttons.onHover = () => audio.play('hover', { volume: 0.6 });
 buttons.onFire = () => audio.play('confirm');
@@ -89,6 +90,7 @@ const commander = new Commander(stage, ground, {
     tutorial.counters.smites++;
     const p = new THREE.Vector3(x, heightAt(x, z), z);
     fx.smite(p, MANA.smiteRadius);
+    atlas.splat(x, z, MANA.smiteRadius * 0.9, 1.2, '#24160d', 16);
     audio.play('smite', { pan: pan(x) });
     audio.setCharge(0);
     stage.shake(1.0);
@@ -150,6 +152,7 @@ function loadWorld(level: Level, attract: boolean, mode: 'host' | 'guest' | null
   stage.scene.add(terrain.group);
   heightAt = terrain.heightAt;
   baseViews.build(bases);
+  atlas.build(bases, level.map.seed);
   const factions = level.map.enemies + 1;
   const sim = mode === 'guest' ? new GuestSim(bases, factions, (c) => net?.sendCommand(c)) : new Sim(bases, factions);
   sim.hasPlayer = !attract;
@@ -485,6 +488,7 @@ function processEvents(events: GameEvent[], sim: Sim, isAttract: boolean) {
       }
       case 'clash':
         fx.sparks(at(e.x, e.z), mixColor(e.a, e.b), 6);
+        if (Math.random() < 0.35) atlas.splat(e.x, e.z, 0.32, 0.5, '#3a2416', 2);
         audio.play('clash', { volume: 0.5 * vol, pan: pan(e.x) });
         break;
       case 'hit': {
@@ -497,6 +501,7 @@ function processEvents(events: GameEvent[], sim: Sim, isAttract: boolean) {
         const b = sim.bases[e.base];
         fx.burst(at(b.x, b.z, 0.2), factionColor(e.to), b.type === 'castle' ? 1.4 : 1);
         baseViews.pop(b.id);
+        atlas.splat(b.x, b.z, b.radius * 2.4, 0.55, factionColor(e.to), 14);
         if (isAttract) { audio.play('capture', { volume: 0.25 }); break; }
         if (e.to === me) {
           tutorial.counters.captured++;
@@ -692,6 +697,7 @@ function tick(now: number) {
     }
     baseViews.update(rawDt, stage.t, sim.time, state === 'play' ? commander.highlight : { hover: new Set(), selected: new Set(), target: new Set() });
     unitViews.update(sim.units, stage.t);
+    atlas.update(rawDt, sim.bases, sim.units);
   }
 
   terrain?.update(rawDt, stage.t);

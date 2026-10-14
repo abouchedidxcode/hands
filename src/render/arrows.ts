@@ -12,12 +12,19 @@ void main(){ vAlong = along; vSide = side; gl_Position = projectionMatrix * mode
 const frag = /* glsl */ `
 uniform vec3 color; uniform float time; uniform float opacity; uniform float len;
 varying float vAlong; varying float vSide;
+// a brush-inked marching route: pigment ribbon with dark ink borders and dashes
 void main(){
-  float edge = 1.0 - smoothstep(0.55, 1.0, abs(vSide));
-  float dash = smoothstep(0.35, 0.5, fract(vAlong * len * 0.9 - time * 2.2));
+  float s = abs(vSide);
+  float body = 1.0 - smoothstep(0.86, 1.0, s);
+  float border = smoothstep(0.55, 0.72, s) * body;
+  float ph = fract(vAlong * len * 0.9 - time * 2.2);
+  float dash = smoothstep(0.30, 0.38, ph) * (1.0 - smoothstep(0.62, 0.70, ph));
   float headFade = smoothstep(0.0, 0.08, vAlong);
-  float a = edge * (0.45 + 0.55 * dash) * headFade * opacity;
-  gl_FragColor = vec4(color * (1.4 + dash), a);
+  vec3 ink = vec3(0.08, 0.05, 0.03);
+  vec3 c = mix(color, ink, max(border, dash * 0.85 * (1.0 - smoothstep(0.35, 0.45, s) * 0.0)) );
+  c = mix(c, ink, border);
+  float a = body * headFade * opacity * (0.8 + 0.2 * dash);
+  gl_FragColor = vec4(c, a);
 }`;
 
 interface Arc { mesh: THREE.Mesh; geo: THREE.BufferGeometry; mat: THREE.ShaderMaterial; head: THREE.Mesh; headMat: THREE.MeshBasicMaterial }
@@ -49,13 +56,13 @@ export class DragArrows {
       geo.setIndex(idx);
       const mat = new THREE.ShaderMaterial({
         vertexShader: vert, fragmentShader: frag, transparent: true, depthWrite: false, depthTest: false,
-        blending: THREE.AdditiveBlending, side: THREE.DoubleSide,
+        side: THREE.DoubleSide,
         uniforms: { color: { value: new THREE.Color() }, time: { value: 0 }, opacity: { value: 1 }, len: { value: 1 } },
       });
       const mesh = new THREE.Mesh(geo, mat);
       mesh.frustumCulled = false;
       mesh.renderOrder = 30;
-      const headMat = new THREE.MeshBasicMaterial({ transparent: true, toneMapped: false, depthTest: false, blending: THREE.AdditiveBlending });
+      const headMat = new THREE.MeshBasicMaterial({ transparent: true, toneMapped: false, depthTest: false });
       const head = new THREE.Mesh(headGeo, headMat);
       head.renderOrder = 31;
       mesh.visible = head.visible = false;
@@ -86,7 +93,7 @@ export class DragArrows {
     pos.needsUpdate = true;
     arc.geo.computeBoundingSphere();
     arc.mat.uniforms.color.value.set(color);
-    if (!valid) arc.mat.uniforms.color.value.multiplyScalar(0.45);
+    if (!valid) arc.mat.uniforms.color.value.lerp(new THREE.Color('#9a8c74'), 0.7);
     arc.mat.uniforms.time.value = t;
     arc.mat.uniforms.len.value = Math.max(1, len);
     arc.mat.uniforms.opacity.value = valid ? 1 : 0.6;
@@ -96,8 +103,7 @@ export class DragArrows {
     this.point(1, h, this.tan);
     arc.head.position.copy(this.tan);
     arc.head.lookAt(this.tan.clone().add(this.tan.clone().sub(this.p)));
-    arc.headMat.color.set(color);
-    if (valid) arc.headMat.color.multiplyScalar(1.6);
+    arc.headMat.color.set(valid ? '#1a0f08' : '#6b5a44');
     arc.head.visible = true;
     arc.head.scale.setScalar(valid ? 1 + Math.sin(t * 10) * 0.12 : 0.7);
   }

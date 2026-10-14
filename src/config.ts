@@ -3,9 +3,10 @@
 export const PLAYER = 0;
 export const NEUTRAL = -1;
 
-export const FACTION_COLORS = ['#33e1ff', '#ff3d5a', '#ffb22e', '#b46bff'];
+// LIVING ATLAS inks: cerulean (you), vermilion, ochre, imperial purple
+export const FACTION_COLORS = ['#1f9be8', '#d8352a', '#e8a317', '#8e3fc8'];
 export const FACTION_NAMES = ['You', 'Crimson', 'Amber', 'Violet'];
-export const NEUTRAL_COLOR = '#b8b0a2';
+export const NEUTRAL_COLOR = '#9a8c74';
 
 export function factionColor(f: number): string {
   return f < 0 ? NEUTRAL_COLOR : FACTION_COLORS[f % FACTION_COLORS.length];

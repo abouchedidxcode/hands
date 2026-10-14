@@ -603,3 +603,85 @@ h3 { margin: 0; font-weight: 700; color: var(--muted); letter-spacing: 0.14em; t
   .stats { max-width: 420px; }
   .gesture-strip span { font-size: 11px; }
 }
+
+/* ======================================================= LIVING ATLAS theme */
+:root {
+  --player: #1f9be8;
+  --crimson: #d8352a;
+  --amber: #e8a317;
+  --violet: #8e3fc8;
+  --ink: #1e120a;
+  --glass: rgba(239, 224, 189, 0.86);
+  --glass-strong: rgba(239, 224, 189, 0.94);
+  --line: rgba(60, 36, 18, 0.55);
+  --text: #2a1a0e;
+  --muted: #6b4f33;
+  --gold: #b8860b;
+  --font: 'IM Fell English', 'Rubik', Georgia, serif;
+  --display: 'Cinzel Decorative', 'Cinzel', Georgia, serif;
+}
+html, body { background: #c9b089; }
+.panel {
+  background:
+    radial-gradient(120% 100% at 50% 40%, rgba(255, 248, 228, 0.55), rgba(0, 0, 0, 0) 70%),
+    linear-gradient(180deg, #f1e3c2, #e2cc9c);
+  border: 3px double #4a2f18; border-radius: 10px;
+  box-shadow: 0 20px 50px rgba(50, 28, 10, 0.45), inset 0 0 60px rgba(120, 80, 30, 0.35), inset 0 0 0 6px rgba(255, 245, 220, 0.4);
+  backdrop-filter: none;
+}
+.panel.clear { background: none; border: none; box-shadow: none; }
+.title {
+  font-family: var(--display); font-weight: 900; letter-spacing: 0.04em;
+  background: linear-gradient(180deg, #fff2b8 0%, #e2b23c 40%, #9a6a12 70%, #5a3a08 100%);
+  -webkit-background-clip: text; background-clip: text; color: transparent;
+  filter: drop-shadow(0 3px 0 #2a1608) drop-shadow(0 0 1px #2a1608) drop-shadow(0 10px 18px rgba(40, 20, 0, 0.5));
+}
+.tagline, .fineprint, h3, .hb .sub, .hint span, .stat span, #coach .t span { color: var(--muted); }
+.tagline b { color: var(--ink); }
+h2, .hint b, #coach .t b, .stat b { color: var(--ink); }
+.big-start {
+  font-family: var(--display); font-weight: 900; color: #fff1d0;
+  background: radial-gradient(circle at 40% 30%, #e0564a, #a51f18 60%, #6a0f0a);
+  box-shadow: 0 8px 0 #4a0a06, 0 16px 34px rgba(70, 20, 0, 0.45), inset 0 0 0 3px rgba(255, 200, 160, 0.35);
+  text-shadow: 0 2px 0 #4a0a06;
+}
+.big-start:active { box-shadow: 0 3px 0 #4a0a06, 0 8px 20px rgba(70, 20, 0, 0.45); }
+/* hand buttons as parchment / wax seals */
+.hb {
+  --c: #b8860b;
+  background: radial-gradient(circle at 38% 30%, #f6e8c6, #e6d0a0 55%, #c6a66a 100%);
+  border: 3px solid #4a2f18; color: var(--ink); font-weight: 900;
+  box-shadow: 0 10px 26px rgba(60, 30, 8, 0.4), inset 0 0 0 5px rgba(255, 248, 225, 0.45), inset 0 0 22px rgba(110, 70, 20, 0.45);
+}
+.hb::before { background: conic-gradient(var(--c) calc(var(--p) * 1turn), rgba(60, 36, 18, 0.22) 0); }
+.hb.primary { background: radial-gradient(circle at 38% 30%, #e85a4c, #b0261d 55%, #6c120c 100%); color: #fff1d0; border-color: #3a0805; }
+.hb.primary .sub { color: #ffd9b8; }
+.hb.hover { border-color: var(--c); box-shadow: 0 0 0 4px rgba(184, 134, 11, 0.25), 0 14px 34px rgba(60, 30, 8, 0.5); }
+.hb.danger { --c: #d8352a; }
+.hb.gold { --c: #b8860b; }
+.levels .hb .name { color: var(--muted); }
+.cursor { border-color: rgba(184, 134, 11, 0.95); box-shadow: 0 0 0 2px rgba(42, 26, 14, 0.7), 0 0 14px rgba(255, 200, 80, 0.6); }
+.cursor::after { background: #2a1a0e; }
+.cursor.pinch { background: rgba(232, 180, 60, 0.55); }
+/* HUD */
+.power { background: rgba(239, 224, 189, 0.8); border: 2px solid #4a2f18; border-radius: 6px; box-shadow: 0 6px 18px rgba(60, 30, 8, 0.35); }
+.power > div { color: rgba(255, 246, 225, 0.95); font-family: 'Cinzel', Georgia, serif; text-shadow: 0 1px 0 rgba(30, 15, 5, 0.6); }
+.level-tag { text-shadow: 0 1px 0 rgba(255, 245, 220, 0.7); }
+.level-tag .lv { color: var(--ink); font-family: 'Cinzel', Georgia, serif; font-weight: 900; }
+.level-tag .tm { color: var(--muted); }
+.mana .bar { background: rgba(239, 224, 189, 0.8); border: 2px solid #4a2f18; border-radius: 6px; }
+.mana .fill { background: linear-gradient(90deg, #7a4f0c, #d9a62e 60%, #fff0b0); box-shadow: 0 0 14px rgba(230, 170, 40, 0.8); }
+.mana .tick { background: rgba(42, 26, 14, 0.6); }
+.mana .label { color: var(--ink); text-shadow: 0 1px 0 rgba(255, 245, 220, 0.8); font-family: 'Cinzel', Georgia, serif; font-weight: 700; }
+.mana.ready .label { color: #7a4f0c; text-shadow: 0 0 10px rgba(255, 220, 120, 0.9); }
+.toast { font-family: var(--display); font-weight: 900; text-shadow: 0 3px 0 #2a1608, 0 0 2px #2a1608, 0 0 24px rgba(255, 220, 140, 0.6); }
+.countdown { font-family: var(--display); font-weight: 900; color: #fff2c8; text-shadow: 0 8px 0 #2a1608, 0 0 3px #2a1608, 0 0 40px rgba(255, 200, 80, 0.7); }
+#coach { background: var(--glass-strong); border: 3px double #4a2f18; border-radius: 10px; box-shadow: 0 16px 40px rgba(60, 30, 8, 0.4); }
+#pip { border: 3px double #4a2f18; border-radius: 8px; }
+.bigstars { color: #c99512; text-shadow: 0 2px 0 #4a2f18; }
+.bigstars .off { color: rgba(60, 36, 18, 0.2); }
+.victory { background: linear-gradient(180deg, #fff2b8, #e2b23c 50%, #7a4f0c); -webkit-background-clip: text; background-clip: text; filter: drop-shadow(0 3px 0 #2a1608); }
+.defeat { color: #a51f18; text-shadow: 0 3px 0 #2a1608; }
+
+.fineprint, .tagline, .hint span, .hint b { text-shadow: 0 0 6px #f3e6c6, 0 0 12px #f3e6c6, 0 0 2px #f3e6c6; }
+.level-tag .lv { font-size: 16px; }

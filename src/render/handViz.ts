@@ -29,8 +29,12 @@ export type HandMode = 'idle' | 'hover' | 'pinch' | 'charge' | 'armed' | 'swat';
 interface Palette { body: THREE.Color; rim: THREE.Color; hot: THREE.Color }
 // Linear-space colours: the body stays under the bloom threshold, the rim may bloom.
 const PALETTES: Palette[] = [
-  { body: new THREE.Color().setRGB(0.03, 0.24, 0.38), rim: new THREE.Color().setRGB(0.35, 1.1, 1.5), hot: new THREE.Color().setRGB(0.3, 0.75, 1.7) },
-  { body: new THREE.Color().setRGB(0.27, 0.14, 0.02), rim: new THREE.Color().setRGB(1.5, 0.85, 0.25), hot: new THREE.Color().setRGB(1.7, 0.55, 0.12) },
+  // LIVING ATLAS: sepia-ink body veiling the paper, gold-leaf rim (the only thing that blooms)
+  { body: new THREE.Color().setRGB(0.34, 0.21, 0.04), rim: new THREE.Color().setRGB(1.9, 1.25, 0.32), hot: new THREE.Color().setRGB(1.9, 1.35, 0.55) },
+  { body: new THREE.Color().setRGB(0.34, 0.14, 0.04), rim: new THREE.Color().setRGB(1.9, 0.85, 0.3), hot: new THREE.Color().setRGB(1.9, 1.1, 0.5) },
+  // online opponent: vermilion ink with a blood-red rim
+  { body: new THREE.Color().setRGB(0.32, 0.03, 0.02), rim: new THREE.Color().setRGB(1.9, 0.22, 0.12), hot: new THREE.Color().setRGB(1.9, 0.5, 0.3) },
+  { body: new THREE.Color().setRGB(0.28, 0.03, 0.06), rim: new THREE.Color().setRGB(1.7, 0.18, 0.3), hot: new THREE.Color().setRGB(1.9, 0.45, 0.45) },
 ];
 const ONES = [1, 1, 1, 1, 1];
 
@@ -108,11 +112,11 @@ class OneHand {
     this.spark.visible = false;
 
     this.ret = reticleMaterial();
-    (this.ret.uniforms.uColor.value as THREE.Color).copy(this.pal.rim).multiplyScalar(1.0);
+    (this.ret.uniforms.uColor.value as THREE.Color).copy(this.pal.rim).multiplyScalar(0.75);
     this.reticle = new THREE.Mesh(new THREE.PlaneGeometry(2, 2), this.ret);
     this.reticle.rotation.x = -Math.PI / 2;
     this.reticle.scale.setScalar(this.ret.uniforms.uRm.value as number);
-    this.reticle.renderOrder = 41; // on top of the hand: the cursor must stay readable
+    this.reticle.renderOrder = 36;
     this.reticle.frustumCulled = false;
 
     this.group.add(this.reticle, ...this.ghosts, this.prepass, this.mesh, this.spark);
@@ -177,7 +181,7 @@ class OneHand {
     // ------------------------------------------------ swat afterimages
     for (let g = 0; g < GHOSTS; g++) {
       const age = (this.ghostHead - g + GHOSTS) % GHOSTS; // 0 = newest
-      const a = this.swatAmt * this.vis * 0.45 * (1 - age / GHOSTS);
+      const a = this.swatAmt * this.vis * 0.5 * (1 - age / GHOSTS);
       this.ghosts[g].visible = a > 0.01;
       this.ghostU[g].uGhost.value = a;
     }
@@ -188,10 +192,10 @@ class OneHand {
     if (this.spark.visible) {
       const span = this.pts[0].distanceTo(this.pts[9]);
       this.spark.position.copy(this.pts[4]).add(this.pts[8]).multiplyScalar(0.5);
-      this.spark.scale.setScalar(span * (0.17 + 0.05 * Math.sin(t * 37) + 0.03 * Math.sin(t * 13)) * sp);
+      this.spark.scale.setScalar(span * (0.7 + 0.25 * Math.sin(t * 37) + 0.1 * Math.sin(t * 13)) * sp);
       this.sparkMat.rotation = t * 1.7;
-      this.sparkMat.opacity = sp * 0.9;
-      this.sparkMat.color.copy(this.pal.rim).multiplyScalar(0.32);
+      this.sparkMat.opacity = sp;
+      this.sparkMat.color.copy(this.pal.rim).multiplyScalar(1.3);
     }
 
     // ------------------------------------------------ ground reticle under the cursor
@@ -218,10 +222,10 @@ class OneHand {
       const g = stage.screenToGround(h.x, h.y, 0.25, this.tmp);
       if (g) this.reticle.position.set(g.x, ground(g.x, g.z) + 0.06, g.z);
     }
-    let ring = 0.95, width = 0.1, dot = 0.08, fill = 0, danger = 0, spin = 0.7, dash = 3;
+    let ring = 0.55, width = 0.075, dot = 0.06, fill = 0, danger = 0, spin = 0.7, dash = 3;
     switch (mode) {
-      case 'pinch': ring = 0.62; width = 0.13; dot = 0.1; fill = 0.45; spin = 0; dash = 0; break;
-      case 'charge': ring = 0.95 + (MANA.smiteRadius - 0.95) * charge; width = 0.09; dot = 0.08; fill = 0.1; spin = 3.5; dash = 24; danger = 0.35 * charge; break;
+      case 'pinch': ring = 0.34; width = 0.1; dot = 0.09; fill = 0.4; spin = 0; dash = 0; break;
+      case 'charge': ring = 0.55 + (MANA.smiteRadius - 0.55) * charge; width = 0.09; dot = 0.08; fill = 0.1; spin = 3.5; dash = 24; danger = 0.35 * charge; break;
       case 'armed': ring = MANA.smiteRadius * (1 + 0.015 * Math.sin(t * 17)); width = 0.13; dot = 0.11; fill = 0.3; spin = 0.5; dash = 0; danger = 1; break;
       case 'swat': ring = MANA.swatRadius; width = 0.1; dot = 0.05; fill = 0.12; spin = 7; dash = 8; break;
       default: break;
@@ -248,8 +252,12 @@ class OneHand {
 /** The player's giant translucent "god hands" floating over the board, casting shadows. */
 export class HandViz {
   group = new THREE.Group();
-  hands = [new OneHand(0), new OneHand(1)];
-  constructor() { for (const h of this.hands) this.group.add(h.group); }
+  hands: OneHand[];
+  /** `palettes`: [0, 1] for the local player, [2, 3] for an online opponent. */
+  constructor(palettes: [number, number] = [0, 1]) {
+    this.hands = palettes.map((p) => new OneHand(p));
+    for (const h of this.hands) this.group.add(h.group);
+  }
   update(hands: HandState[], stage: Stage, dt: number, t: number, modes: HandMode[], charges: number[], ground: (x: number, z: number) => number) {
     for (let i = 0; i < this.hands.length && i < hands.length; i++) {
       this.hands[i].update(hands[i], stage, dt, t, modes[i] ?? 'idle', charges[i] ?? 0, ground);

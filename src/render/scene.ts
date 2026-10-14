@@ -1,9 +1,8 @@
 import * as THREE from 'three';
 import { EffectComposer } from 'three/examples/jsm/postprocessing/EffectComposer.js';
-import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPass.js';
 import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass.js';
-import { ShaderPass } from 'three/examples/jsm/postprocessing/ShaderPass.js';
+import { InkPass } from './inkPass';
 import { BOARD } from '../config';
 
 const TILT = THREE.MathUtils.degToRad(58);
@@ -16,7 +15,7 @@ export class Stage {
   composer: EffectComposer;
   bloom: UnrealBloomPass;
   sun: THREE.DirectionalLight;
-  private vignette: ShaderPass;
+  ink: InkPass;
   private shakeAmt = 0;
   private baseCamPos = new THREE.Vector3();
   private target = new THREE.Vector3(0, 0, 0.6);
@@ -33,21 +32,22 @@ export class Stage {
     this.renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: 'high-performance', preserveDrawingBuffer: false });
     // ?lowres renders at reduced resolution (automated tests on software GL)
     const lowres = new URLSearchParams(location.search).has('lowres');
-    this.renderer.setPixelRatio(lowres ? 0.5 : Math.min(window.devicePixelRatio, 2));
+    // (capped at 1.5: the ink pass + 4x MSAA scene target are the main fill-rate cost)
+    this.renderer.setPixelRatio(lowres ? 0.5 : Math.min(window.devicePixelRatio, 1.5));
     this.renderer.shadowMap.enabled = true;
     this.renderer.shadowMap.type = THREE.PCFShadowMap;
-    this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
-    this.renderer.toneMappingExposure = 1.05;
+    this.renderer.toneMapping = THREE.NeutralToneMapping;
+    this.renderer.toneMappingExposure = 1.0;
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
 
-    this.scene.background = new THREE.Color('#0d3346');
-    this.scene.fog = new THREE.Fog('#0f3a50', 70, 150);
+    this.scene.background = new THREE.Color('#b99a6a');
+    this.scene.fog = new THREE.Fog('#c9b089', 80, 170);
 
     this.camera = new THREE.PerspectiveCamera(38, 1, 0.5, 400);
 
-    const hemi = new THREE.HemisphereLight('#cfeaff', '#5d4a2e', 1.25);
+    const hemi = new THREE.HemisphereLight('#fff4dc', '#8a6f48', 1.55);
     this.scene.add(hemi);
-    this.sun = new THREE.DirectionalLight('#fff0d6', 2.6);
+    this.sun = new THREE.DirectionalLight('#fff3dc', 2.3);
     this.sun.position.set(-18, 32, 12);
     this.sun.castShadow = true;
     this.sun.shadow.mapSize.set(2048, 2048);
@@ -56,22 +56,17 @@ export class Stage {
     this.sun.shadow.bias = -0.0004;
     this.sun.shadow.normalBias = 0.03;
     this.scene.add(this.sun, this.sun.target);
-    const rim = new THREE.DirectionalLight('#7fb8ff', 0.55);
+    const rim = new THREE.DirectionalLight('#ffe2b0', 0.35);
     rim.position.set(20, 14, -18);
     this.scene.add(rim);
 
     this.composer = new EffectComposer(this.renderer);
-    this.composer.addPass(new RenderPass(this.scene, this.camera));
-    this.bloom = new UnrealBloomPass(new THREE.Vector2(512, 512), 0.75, 0.55, 0.82);
+    this.ink = new InkPass(this.scene, this.camera, lowres ? 0 : 4);
+    this.ink.mat.uniforms.uPx.value = this.renderer.getPixelRatio();
+    this.composer.addPass(this.ink);
+    // only HDR things (gold-leaf lightning, hand rim, charge) bloom; paper never does
+    this.bloom = new UnrealBloomPass(new THREE.Vector2(512, 512), 0.55, 0.5, 1.05);
     this.composer.addPass(this.bloom);
-    this.vignette = new ShaderPass({
-      uniforms: { tDiffuse: { value: null }, amount: { value: 0.32 }, flash: { value: 0 } },
-      vertexShader: 'varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix*modelViewMatrix*vec4(position,1.); }',
-      fragmentShader: `uniform sampler2D tDiffuse; uniform float amount; uniform float flash; varying vec2 vUv;
-        void main(){ vec4 c = texture2D(tDiffuse, vUv); vec2 d = vUv-0.5; float v = smoothstep(0.85, 0.2, length(d*vec2(1.0,1.25)));
-        c.rgb *= mix(1.0-amount, 1.0, v); c.rgb += vec3(0.85,0.95,1.0)*flash; gl_FragColor = c; }`,
-    });
-    this.composer.addPass(this.vignette);
     this.composer.addPass(new OutputPass());
 
     this.resize();
@@ -82,6 +77,7 @@ export class Stage {
     const w = window.innerWidth, h = window.innerHeight;
     this.renderer.setSize(w, h, false);
     this.composer.setSize(w, h);
+    this.ink.mat.uniforms.uPx.value = this.renderer.getPixelRatio();
     this.camera.aspect = w / h;
     this.camera.updateProjectionMatrix();
     this.fitCamera();
@@ -101,7 +97,7 @@ export class Stage {
   snapZoom(z: number) { this.zoomCur = z; this.fitCamera(); }
 
   shake(amount: number) { this.shakeAmt = Math.min(1.2, this.shakeAmt + amount); }
-  flash(amount: number) { this.vignette.uniforms.flash.value = Math.min(0.6, this.vignette.uniforms.flash.value + amount); }
+  flash(amount: number) { this.ink.mat.uniforms.uFlash.value = Math.min(0.6, this.ink.mat.uniforms.uFlash.value + amount); }
 
   /** Screen point (0..1, y down) → ground point at height y. Returns null if no hit. */
   screenToGround(sx: number, sy: number, y = 0, out = new THREE.Vector3()): THREE.Vector3 | null {
@@ -136,7 +132,8 @@ export class Stage {
       this.shakeAmt *= Math.exp(-dt * 6);
     }
     this.camera.lookAt(this.target);
-    const f = this.vignette.uniforms.flash;
+    this.ink.mat.uniforms.uTime.value = this.t;
+    const f = this.ink.mat.uniforms.uFlash;
     f.value *= Math.exp(-dt * 7);
     this.composer.render(dt);
   }

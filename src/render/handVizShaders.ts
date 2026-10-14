@@ -57,39 +57,44 @@ void main() {
   vec3 V = normalize(cameraPosition - vW);
   vec3 N = normalize(vN);
   float ndv = clamp(dot(N, V), 0.0, 1.0);
-  float fres = pow(1.0 - ndv, 3.0);
+  float fres = pow(1.0 - ndv, 2.6);
   float lam = clamp(dot(N, uLight) * 0.5 + 0.5, 0.0, 1.0);
 
   float heat = uHeat;
   // soft wispy body
   float n2 = gh_noise(vW * 1.3 + vec3(uTime * 0.21, -uTime * 0.37, uTime * 0.17));
-  vec3 col = uBody * (0.2 + 0.6 * lam) * (0.65 + 0.7 * n2);
+  vec3 col = uBody * (0.35 + 0.85 * lam) * (0.75 + 0.5 * n2);
   // energy pulses streaming wrist -> fingertips
   float band = pow(0.5 + 0.5 * sin((flow * 3.2 - uTime * (0.55 + heat * 1.6)) * 6.2831), 10.0);
   float scan = smoothstep(0.82, 1.0, 0.5 + 0.5 * sin(vW.z * 30.0 + vW.x * 4.0 - uTime * 3.5));
-  col += uBody * (band * (0.5 + heat * 0.6) + scan * 0.2);
-  // aether currents drifting through the body
-  float cur = 1.0 - abs(gh_noise(vW * 1.7 + vec3(-uTime * 0.3, uTime * 0.45, uTime * 0.6)) * 2.0 - 1.0);
-  col += uBody * pow(cur, 7.0) * 1.3;
+  col += uBody * (band * (0.55 + heat) + scan * 0.22);
   // rim light
-  col += uRim * fres * (0.85 + heat * 0.3 + uArmed * 0.4);
+  col += uRim * fres * (0.95 + heat * 0.9 + uArmed * 0.8);
   // fingertips (thumb + index light up when pinching)
   float sel = 1.0 - step(1.5, fid);
-  float tipG = pow(tip, 3.0) * (uTip + uPinch * sel * 0.65 + heat * 0.25 + uArmed * 0.25);
+  float tipG = pow(tip, 2.2) * (uTip + uPinch * sel * 1.5 + heat * 0.5 + uArmed * 0.5);
   col += uRim * tipG;
   // charge: hand heats up, crackling veins appear and densify
   float r = 1.0 - abs(gh_noise(vW * 3.4 + vec3(uTime * 1.7, uTime * 5.0, -uTime * 2.3)) * 2.0 - 1.0);
-  float veins = pow(r, mix(40.0, 12.0, heat)) * smoothstep(0.0, 0.25, heat) * (0.7 + 0.6 * uFlicker);
-  col = mix(col, col * 0.7 + uHot * 0.16, heat * 0.6);
-  col += uHot * veins * (0.55 + uArmed * 0.45);
+  float veins = pow(r, mix(22.0, 5.0, heat)) * smoothstep(0.0, 0.25, heat) * (0.75 + 0.5 * uFlicker);
+  col = mix(col, col * 0.6 + uHot * 0.32, heat * 0.55);
+  col += uHot * veins * (1.1 + uArmed * 1.4);
   col += uHot * edge * 1.6;
 
-  float a = (0.1 + 0.62 * fres + tipG * 0.2 + veins * 0.2 + heat * 0.1) * fade;
+  // quill hatching: sepia strokes wrapping the shaded side of the hand
+  float hs = (vW.x * 0.8 + vW.z * 0.6 + vW.y * 0.9) * 7.0 + gh_noise(vW * 3.0) * 0.8;
+  float hl = 1.0 - smoothstep(0.12, 0.26, abs(fract(hs) - 0.5));
+  float hs2 = (vW.x * -0.7 + vW.z * 0.7 + vW.y * 0.4) * 7.0 + gh_noise(vW * 3.0 + 5.0) * 0.8;
+  float hl2 = 1.0 - smoothstep(0.12, 0.24, abs(fract(hs2) - 0.5));
+  float shadeK = 1.0 - lam;
+  float quill = hl * smoothstep(0.25, 0.6, shadeK) + hl2 * smoothstep(0.5, 0.8, shadeK);
+  float a = (0.2 + 0.45 * fres + tipG * 0.25 + veins * 0.25 + heat * 0.1 + quill * 0.4) * fade;
+  col *= 1.0 - quill * 0.6;
   a = clamp(a, 0.0, 0.92);
   col *= fade;
   if (uGhost > 0.0) {
     // afterimage: additive rim-only silhouette
-    col = (uRim * (0.12 + fres * 0.7) + uBody * 0.15) * uGhost * fade;
+    col = (uRim * (0.25 + fres * 0.9) + uBody * 0.4) * uGhost * fade;
     a = 0.0;
   }
   gl_FragColor = vec4(col * uVis, a * uVis);
