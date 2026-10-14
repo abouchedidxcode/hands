@@ -70,10 +70,10 @@ stage.scene.add(baseViews.group, unitViews.group);
 const tutorial = new Tutorial();
 const recorder = new ClipRecorder();
 const commander = new Commander(stage, ground, {
-  pinch: () => audio.play('pinch'),
+  grab: () => audio.play('pinch'),
   select: (_i, b) => {
     audio.play('tick', { pitch: 1 + commander.ctl.reduce((n, c) => n + c.sel.length, 0) * 0.08 });
-    if (b.owner === me) tutorial.counters.pinchedOwn++;
+    if (b.owner === me) tutorial.counters.grabbedOwn++;
   },
   send: (_i, sources, target, n) => {
     audio.play('release', { pan: pan(target.x) });
@@ -85,7 +85,6 @@ const commander = new Commander(stage, ground, {
     void n;
   },
   cancel: () => audio.play('cancel', { volume: 0.6 }),
-  armed: () => audio.play('manaFull', { volume: 0.7 }),
   smite: (_i, x, z, kills) => {
     tutorial.counters.smites++;
     const p = new THREE.Vector3(x, heightAt(x, z), z);
@@ -110,13 +109,6 @@ const commander = new Commander(stage, ground, {
     if (world) for (const b of world.sim.bases) if (b.owner === me) fx.shockwave(at(b.x, b.z, 0.1).clone(), '#ffd166', 3.2);
   },
   denied: () => { audio.play('denied'); hud.toast('NOT ENOUGH MANA', '#9fb4ff', true, 'mana', 2); },
-  swat: (_i, x, _z, kills) => {
-    tutorial.counters.swatKills += kills;
-    audio.play('swat', { pan: pan(x) });
-    stage.shake(0.25);
-    if (kills >= 3) recorder.banner(`SWAT ×${kills}`, '#ffffff');
-    if (kills >= 6) hud.toast(`SWAT ×${kills}`, '#ffffff', true, 'swat', 0.4);
-  },
 });
 
 // ------------------------------------------------------------------ world
@@ -323,7 +315,7 @@ function startLevel(level: Level) {
   timeScale = 1;
   recorder.start(level.tutorial ? 'Training' : level.id >= 100 ? 'Skirmish' : `Level ${level.id} · ${level.name}`, audioStream());
   if (level.tutorial) tutorial.start(world!.sim, commander);
-  else { commander.allowSmite = commander.allowSwat = commander.allowSend = true; }
+  else { commander.allowSmite = commander.allowSend = commander.allowRally = true; }
   setState('countdown');
   stage.snapZoom(0.55);
 }
@@ -376,7 +368,7 @@ function startOnline(seed: number) {
   loadWorld(currentLevel, false, online);
   endTimer = -1;
   timeScale = 1;
-  commander.allowSmite = commander.allowSwat = commander.allowSend = commander.allowRally = true;
+  commander.allowSmite = commander.allowSend = commander.allowRally = true;
   recorder.start('Online duel', audioStream());
   setState('countdown');
   stage.snapZoom(0.55);
@@ -389,7 +381,6 @@ function applyRemoteCommand(c: Command) {
   switch (c.k) {
     case 'send': sim.send(c.from, c.to, opp); break;
     case 'smite': sim.smite(c.x, c.z, opp); break;
-    case 'swat': sim.swat(c.x, c.z, c.r, c.vx, c.vz, opp); break;
     case 'rally': sim.rally(opp); break;
   }
 }
@@ -441,7 +432,7 @@ function encodeHands(frame: InputFrame): RemoteHand[] {
     }
     const c = stage.screenToGround(h.x, h.y, 0.25, v3);
     pts.push(c ? Math.round(c.x * 50) / 50 : 0, c ? Math.round(c.z * 50) / 50 : 0);
-    out.push({ p: true, g: h.pinch ? 1 : h.fist ? 2 : h.open ? 3 : 0, pts });
+    out.push({ p: true, g: h.grab ? 1 : h.middle ? 2 : h.open ? 3 : 0, pts });
   }
   return out;
 }
@@ -461,7 +452,7 @@ function decodeHands(): [HandState, HandState] {
     h.present = true;
     h.landmarks = lm;
     h.x = c.x; h.y = c.y;
-    h.pinch = r.g === 1; h.fist = r.g === 2; h.open = r.g === 3;
+    h.grab = r.g === 1; h.middle = r.g === 2; h.open = r.g === 3;
   }
   return remoteHandStates;
 }
@@ -695,7 +686,8 @@ function tick(now: number) {
       audio.setCharge(charge > 0 ? charge : 0);
       for (let i = 0; i < 2; i++) {
         const m = commander.modes[i];
-        if (m === 'charge' || m === 'armed') fx.charge(handViz.palm(i, v3), ch[i]);
+        // middle-finger smite: crackle on the raised fingertip
+        if (m === 'charge' || m === 'armed') fx.charge(v3.copy(handViz.hands[i].pts[12]), ch[i]);
       }
       if (!commander.modes.some((m) => m === 'charge' || m === 'armed')) fx.charge(null, 0);
     } else fx.charge(null, 0);

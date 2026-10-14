@@ -11,24 +11,21 @@ const DEMOS = {
   pinch: `<div class="demo d-pinch">
       <div class="base me"></div><div class="base tgt"></div>
       <svg viewBox="0 0 100 100" preserveAspectRatio="none"><path class="tr" d="M16 62 L80 36" pathLength="100"/></svg>${dots('sol', 5)}
-      <div class="hand">🤏</div></div>`,
+      <div class="hand">✊</div></div>`,
   sweep: `<div class="demo d-sweep">
       <div class="base me a"></div><div class="base me b"></div><div class="base tgt"></div>
       <svg viewBox="0 0 100 100" preserveAspectRatio="none"><path class="tr" d="M14 70 L42 34 L84 58" pathLength="100"/></svg>
-      <div class="hand">🤏</div></div>`,
+      <div class="hand">✊</div></div>`,
   smite: `<div class="demo d-smite">
       ${dots('foe', 6)}
       <div class="glow"></div><div class="ring"></div><div class="bolt">⚡</div>
-      <div class="hand fist">✊</div><div class="hand open">🖐️</div></div>`,
-  swat: `<div class="demo d-swat">
-      ${dots('foe', 5)}
-      <div class="streak"></div><div class="hand">🖐️</div></div>`,
+      <div class="hand fist">🖕</div><div class="hand open">🖕</div></div>`,
   rally: `<div class="demo d-rally">
       <div class="hand l">🫱</div><div class="hand r">🫲</div>
       <div class="clap">👏</div><div class="ring"></div>
       ${dots('sol', 4)}</div>`,
   two: `<div class="demo d-two">
-      <div class="hand l">🤏</div><div class="hand r">🤏</div></div>`,
+      <div class="hand l">✊</div><div class="hand r">✊</div></div>`,
 };
 
 const hint = (demo: string, title: string, text: string, cls = '') =>
@@ -66,7 +63,7 @@ export const screens = {
       <h1 class="title"><span class="hand">✋</span><br/>GODHAND</h1>
       <p class="tagline pill">Command armies with your <b>bare hands</b>. Pinch. Drag. <b>Smite.</b></p>
       <div class="gesture-strip">
-        <span><i>🤏</i>PINCH &amp; DRAG</span><span><i>✊</i>SMITE</span><span><i>🖐️</i>SWAT</span><span><i>👏</i>RALLY</span>
+        <span><i>✊</i>GRAB &amp; DRAG</span><span><i>🖕</i>SMITE</span><span><i>👏</i>RALLY</span>
       </div>
       <button class="big-start interactive" id="b-start">✋ SUMMON YOUR HANDS</button>
       <p class="fineprint card">🔒 Uses your webcam for hand tracking. Video is processed <b>on your device</b> and never uploaded.<br/>
@@ -99,7 +96,7 @@ export const screens = {
       <h2>NO CAMERA</h2>
       <p class="tagline">${reason}</p>
       <p class="fineprint">GODHAND is made for your hands — allow camera access in the address bar and retry.<br/>
-      Meanwhile you can play with a mouse: <b>left-drag</b> = pinch, <b>hold right button</b> = fist (release to smite), <b>shift + flick</b> = swat.</p>
+      Meanwhile you can play with a mouse: <b>left-drag</b> = grab &amp; carry, <b>right-click</b> = lightning under the cursor.</p>
       <div class="orbs">${orb('b-retrycam', '📷', 'RETRY', 'small')}${orb('b-mouse', '🖱️', 'MOUSE', 'small gold')}</div>
     </div>`,
 
@@ -113,7 +110,7 @@ export const screens = {
         ${orb('b-play', '⚔️', 'PLAY', 'primary', next.tutorial ? 'Training' : `Lv ${next.id} · ${next.name}`)}
         ${orb('b-howto', '✋', 'HOW TO')}
       </div>
-      <p class="tagline pill">Hover a button until its ring fills — or <b>pinch</b> it</p>
+      <p class="tagline pill">Hover a button until its ring fills — or <b>grab</b> it with a fist</p>
     </div>`;
   },
 
@@ -135,10 +132,9 @@ export const screens = {
     <div class="panel howto">
       <h2>YOUR HANDS ARE THE CONTROLLER</h2>
       <div class="hint-row">
-        ${hint(DEMOS.pinch, 'PINCH &amp; DRAG', 'Pinch your castle, drag to a target, let go. Half its army marches.')}
-        ${hint(DEMOS.sweep, 'SWEEP', 'While pinching, glide over more of your castles to send them all.')}
-        ${hint(DEMOS.smite, 'SMITE', 'Hold a <b>fist</b> to charge, <b>open</b> your hand to strike. 35 mana.', 'gold')}
-        ${hint(DEMOS.swat, 'SWAT', 'Swipe an open palm fast across enemy soldiers to fling them.')}
+        ${hint(DEMOS.pinch, 'GRAB &amp; DRAG', '<b>Close your fist</b> near your castle, carry it to a target, <b>open your hand</b>. Half its army marches.')}
+        ${hint(DEMOS.sweep, 'SWEEP', 'Keep the fist closed and pass over more of your castles to send them all.')}
+        ${hint(DEMOS.smite, 'SMITE', 'Raise your <b>middle finger</b>: lightning strikes under your fingertip. 35 mana.', 'gold')}
         ${hint(DEMOS.rally, 'RALLY', '<b>Clap</b> both hands: 6 s of faster marching &amp; growth. 50 mana.', 'gold')}
         ${hint(DEMOS.two, 'TWO HANDS', 'Both hands work at once. Fight on two fronts.')}
       </div>
@@ -164,7 +160,6 @@ export const screens = {
         <div class="stat"><b>${stats.captures}</b><span>Captured</span></div>
         <div class="stat"><b>${stats.kills}</b><span>Kills</span></div>
         <div class="stat"><b>${stats.smites}</b><span>Smites</span></div>
-        <div class="stat"><b>${stats.swats}</b><span>Swats</span></div>
         <div class="stat"><b>${stats.rallies ?? 0}</b><span>Rallies</span></div>
         <div class="stat"><b>${stats.peakArmy}</b><span>Peak army</span></div>
       </div>

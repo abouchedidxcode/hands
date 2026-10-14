@@ -7,9 +7,9 @@
  *   3. mouse fallback (always if the camera is unavailable; while the camera
  *      runs only after 3 s without any hand AND a mouse move since then)
  *
- * Edge flags (pinchStart / pinchEnd) are derived here from consecutive
+ * Edge flags (grabStart / grabEnd) are derived here from consecutive
  * *outputs*, so they are true for exactly one update() call regardless of the
- * source, of source switches, or of hands disappearing mid-pinch.
+ * source, of source switches, or of hands disappearing mid-grab.
  */
 import type { Gesture, HandState, InputFrame } from './types';
 import { emptyHand } from './types';
@@ -46,8 +46,8 @@ const SLOTS: readonly Slot[] = [0, 1];
 
 function poseFor(g: Gesture): HandPose {
   switch (g) {
-    case 'pinch': return POSES.pinch;
-    case 'fist': return POSES.fist;
+    case 'grab': return POSES.fist;
+    case 'middle': return POSES.middle;
     case 'open': return POSES.open;
     case 'point': return POSES.point;
     default: return POSES.relaxed;
@@ -157,7 +157,7 @@ export class InputManager {
    * nearest-position matching (like camera hands), so order may change freely.
    * Missing landmarks are generated from the gesture; missing vx/vy are
    * derived from consecutive positions.
-   * pinchStart/pinchEnd are derived from consecutive pinch values unless given
+   * grabStart/grabEnd are derived from consecutive grab values unless given
    * (given values apply to the first update() after this call only).
    */
   inject(frames: Partial<HandState>[] | null): void {
@@ -251,7 +251,7 @@ export class InputManager {
   private cameraHands(now: number, dtMs: number): [HandState, HandState] {
     const out = SLOTS.map((s) => {
       const snap = this.processors[s].snapshot();
-      const h: HandState = { ...snap, slot: s, pinchStart: false, pinchEnd: false };
+      const h: HandState = { ...snap, slot: s, grabStart: false, grabEnd: false };
       if (!h.present) { this.display[s] = null; return h; }
       const d = this.display[s];
       if (!d || this.renderTau <= 0) {
@@ -304,13 +304,13 @@ export class InputManager {
       if (!h.present) { result[s] = { ...emptyHand(s), slot: s }; return; }
       if (f.handedness === undefined) h.handedness = prev.present ? prev.handedness : s === 0 ? 'Right' : 'Left';
       // Gesture ⇄ booleans.
-      if (f.gesture === undefined) h.gesture = h.pinch ? 'pinch' : h.fist ? 'fist' : h.open ? 'open' : 'none';
+      if (f.gesture === undefined) h.gesture = h.grab ? 'grab' : h.middle ? 'middle' : h.open ? 'open' : 'none';
       else {
-        if (f.pinch === undefined) h.pinch = f.gesture === 'pinch';
-        if (f.fist === undefined) h.fist = f.gesture === 'fist';
+        if (f.grab === undefined) h.grab = f.gesture === 'grab';
+        if (f.middle === undefined) h.middle = f.gesture === 'middle';
         if (f.open === undefined) h.open = f.gesture === 'open';
       }
-      if (f.pinchStrength === undefined) h.pinchStrength = h.pinch ? 1 : 0;
+      if (f.grabStrength === undefined) h.grabStrength = h.grab ? 1 : 0;
       // Velocity from consecutive positions if not given.
       const dt = Math.min(Math.max(dtMs / 1000, 1 / 240), 0.1);
       const moved = prev.present && dtMs > 0;
@@ -321,9 +321,9 @@ export class InputManager {
       }
       // Edge flags: explicit values only count on the first update after inject().
       const fresh = this.injectFresh;
-      this.edgeGiven[s] = { start: fresh && f.pinchStart !== undefined, end: fresh && f.pinchEnd !== undefined };
-      h.pinchStart = fresh && f.pinchStart !== undefined ? f.pinchStart : false;
-      h.pinchEnd = fresh && f.pinchEnd !== undefined ? f.pinchEnd : false;
+      this.edgeGiven[s] = { start: fresh && f.grabStart !== undefined, end: fresh && f.grabEnd !== undefined };
+      h.grabStart = fresh && f.grabStart !== undefined ? f.grabStart : false;
+      h.grabEnd = fresh && f.grabEnd !== undefined ? f.grabEnd : false;
       result[s] = h;
     });
     return result;
@@ -335,17 +335,17 @@ export class InputManager {
       let h = hands[s];
       const prev = this.prevOut[s];
       const given = source === 'synthetic' ? this.edgeGiven[s] : NO_EDGES;
-      if (!h.present && prev.present && prev.pinch) {
-        // Hand vanished mid-pinch: emit one last present frame carrying the
-        // release so consumers that skip absent hands still see pinchEnd.
+      if (!h.present && prev.present && prev.grab) {
+        // Hand vanished mid-grab: emit one last present frame carrying the
+        // release so consumers that skip absent hands still see grabEnd.
         h = {
-          ...prev, pinch: false, pinchStart: false, pinchEnd: true, pinchStrength: 0,
-          gesture: 'none', fist: false, open: false, vx: 0, vy: 0,
+          ...prev, grab: false, grabStart: false, grabEnd: true, grabStrength: 0,
+          gesture: 'none', middle: false, open: false, vx: 0, vy: 0,
         };
       } else {
-        if (!given.start) h.pinchStart = h.pinch && !(prev.present && prev.pinch);
-        if (!given.end) h.pinchEnd = !h.pinch && prev.present && prev.pinch;
-        if (!h.present) { h.pinch = false; h.pinchStart = false; }
+        if (!given.start) h.grabStart = h.grab && !(prev.present && prev.grab);
+        if (!given.end) h.grabEnd = !h.grab && prev.present && prev.grab;
+        if (!h.present) { h.grab = false; h.grabStart = false; }
       }
       hands[s] = h;
       this.prevOut[s] = h;
