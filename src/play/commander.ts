@@ -50,6 +50,8 @@ export class Commander {
   allowSwat = true;
   allowSend = true;
   allowRally = true;
+  /** Which faction these hands command (online guest = 1). */
+  faction = PLAYER;
   private clapPrevD = -1;
   private clapSpeed = 0;
   private clapCooldown = 0;
@@ -95,7 +97,7 @@ export class Commander {
     if (!busy && this.allowRally && this.clapCooldown <= 0 && d < 0.17 && this.clapSpeed > 0.9) {
       this.clapCooldown = 1.2;
       this.clapSpeed = 0;
-      this.ev.rally(sim.rally());
+      this.ev.rally(sim.rally(this.faction));
     }
   }
 
@@ -118,7 +120,7 @@ export class Commander {
     // ---------------------------------------------------------------- smite (fist → open)
     if (h.fist && this.allowSmite) {
       if (c.dragging) { if (c.sel.length) this.ev.cancel(i); c.dragging = false; c.sel = []; }
-      if (!sim.canSmite()) {
+      if (!sim.canSmite(this.faction)) {
         if (!c.denied) { c.denied = true; this.ev.denied(i, 'mana'); }
         c.chargeT = 0;
         c.mode = 'hover';
@@ -132,7 +134,7 @@ export class Commander {
     c.denied = false;
     if (c.armed) {
       // hand opened → unleash
-      const kills = sim.smite(c.g.x, c.g.z);
+      const kills = sim.smite(c.g.x, c.g.z, this.faction);
       if (kills >= 0) this.ev.smite(i, c.g.x, c.g.z, kills);
       c.armed = false;
       c.chargeT = 0;
@@ -148,7 +150,7 @@ export class Commander {
       const wv = this.to.subVectors(c.g, c.gPrev).multiplyScalar(1 / Math.max(dt, 1 / 120));
       for (let s = 0; s <= 3; s++) {
         this.from.lerpVectors(c.gPrev, c.g, s / 3);
-        kills += sim.swat(this.from.x, this.from.z, MANA.swatRadius, wv.x, wv.z);
+        kills += sim.swat(this.from.x, this.from.z, MANA.swatRadius, wv.x, wv.z, this.faction);
       }
       c.swatT = 0.25;
       if (kills > 0) this.ev.swat(i, c.g.x, c.g.z, kills);
@@ -159,10 +161,10 @@ export class Commander {
       c.dragging = true;
       c.sel = [];
       this.ev.pinch(i);
-      if (c.hover && c.hover.owner === PLAYER) { c.sel.push(c.hover.id); this.ev.select(i, c.hover); }
+      if (c.hover && c.hover.owner === this.faction) { c.sel.push(c.hover.id); this.ev.select(i, c.hover); }
     }
     if (c.dragging && h.pinch) {
-      if (c.hover && c.hover.owner === PLAYER && !c.sel.includes(c.hover.id)) {
+      if (c.hover && c.hover.owner === this.faction && !c.sel.includes(c.hover.id)) {
         c.sel.push(c.hover.id);
         this.ev.select(i, c.hover);
       }
@@ -171,7 +173,7 @@ export class Commander {
       for (const id of c.sel) this.highlight.selected.add(id);
       if (c.target) this.highlight.target.add(c.target.id);
       // arcs
-      const col = FACTION_COLORS[PLAYER];
+      const col = FACTION_COLORS[this.faction];
       for (const id of sources) {
         const b = sim.bases[id];
         this.from.set(b.x, this.heightAt(b.x, b.z) + 0.6, b.z);
@@ -183,7 +185,7 @@ export class Commander {
     } else if (c.dragging && (h.pinchEnd || !h.pinch)) {
       const sources = c.sel.filter((id) => id !== c.hover?.id);
       if (c.hover && sources.length) {
-        const n = sim.send(sources, c.hover.id, PLAYER);
+        const n = sim.send(sources, c.hover.id, this.faction);
         if (n > 0) this.ev.send(i, sources, c.hover, n);
         else this.ev.cancel(i);
       } else if (c.sel.length) this.ev.cancel(i);

@@ -29,8 +29,8 @@ export type HandMode = 'idle' | 'hover' | 'pinch' | 'charge' | 'armed' | 'swat';
 interface Palette { body: THREE.Color; rim: THREE.Color; hot: THREE.Color }
 // Linear-space colours: the body stays under the bloom threshold, the rim may bloom.
 const PALETTES: Palette[] = [
-  { body: new THREE.Color().setRGB(0.04, 0.27, 0.4), rim: new THREE.Color().setRGB(0.4, 1.2, 1.6), hot: new THREE.Color().setRGB(0.8, 1.05, 1.6) },
-  { body: new THREE.Color().setRGB(0.4, 0.24, 0.04), rim: new THREE.Color().setRGB(1.6, 1.0, 0.32), hot: new THREE.Color().setRGB(1.7, 1.2, 0.6) },
+  { body: new THREE.Color().setRGB(0.03, 0.24, 0.38), rim: new THREE.Color().setRGB(0.35, 1.1, 1.5), hot: new THREE.Color().setRGB(0.3, 0.75, 1.7) },
+  { body: new THREE.Color().setRGB(0.27, 0.14, 0.02), rim: new THREE.Color().setRGB(1.5, 0.85, 0.25), hot: new THREE.Color().setRGB(1.7, 0.55, 0.12) },
 ];
 const ONES = [1, 1, 1, 1, 1];
 
@@ -108,7 +108,7 @@ class OneHand {
     this.spark.visible = false;
 
     this.ret = reticleMaterial();
-    (this.ret.uniforms.uColor.value as THREE.Color).copy(this.pal.rim).multiplyScalar(0.9);
+    (this.ret.uniforms.uColor.value as THREE.Color).copy(this.pal.rim).multiplyScalar(1.0);
     this.reticle = new THREE.Mesh(new THREE.PlaneGeometry(2, 2), this.ret);
     this.reticle.rotation.x = -Math.PI / 2;
     this.reticle.scale.setScalar(this.ret.uniforms.uRm.value as number);
@@ -188,10 +188,10 @@ class OneHand {
     if (this.spark.visible) {
       const span = this.pts[0].distanceTo(this.pts[9]);
       this.spark.position.copy(this.pts[4]).add(this.pts[8]).multiplyScalar(0.5);
-      this.spark.scale.setScalar(span * (0.34 + 0.1 * Math.sin(t * 37) + 0.05 * Math.sin(t * 13)) * sp);
+      this.spark.scale.setScalar(span * (0.17 + 0.05 * Math.sin(t * 37) + 0.03 * Math.sin(t * 13)) * sp);
       this.sparkMat.rotation = t * 1.7;
       this.sparkMat.opacity = sp * 0.9;
-      this.sparkMat.color.copy(this.pal.rim);
+      this.sparkMat.color.copy(this.pal.rim).multiplyScalar(0.32);
     }
 
     // ------------------------------------------------ ground reticle under the cursor
@@ -218,10 +218,10 @@ class OneHand {
       const g = stage.screenToGround(h.x, h.y, 0.25, this.tmp);
       if (g) this.reticle.position.set(g.x, ground(g.x, g.z) + 0.06, g.z);
     }
-    let ring = 0.55, width = 0.075, dot = 0.06, fill = 0, danger = 0, spin = 0.7, dash = 3;
+    let ring = 0.95, width = 0.1, dot = 0.08, fill = 0, danger = 0, spin = 0.7, dash = 3;
     switch (mode) {
-      case 'pinch': ring = 0.34; width = 0.1; dot = 0.09; fill = 0.4; spin = 0; dash = 0; break;
-      case 'charge': ring = 0.55 + (MANA.smiteRadius - 0.55) * charge; width = 0.09; dot = 0.08; fill = 0.1; spin = 3.5; dash = 24; danger = 0.35 * charge; break;
+      case 'pinch': ring = 0.62; width = 0.13; dot = 0.1; fill = 0.45; spin = 0; dash = 0; break;
+      case 'charge': ring = 0.95 + (MANA.smiteRadius - 0.95) * charge; width = 0.09; dot = 0.08; fill = 0.1; spin = 3.5; dash = 24; danger = 0.35 * charge; break;
       case 'armed': ring = MANA.smiteRadius * (1 + 0.015 * Math.sin(t * 17)); width = 0.13; dot = 0.11; fill = 0.3; spin = 0.5; dash = 0; danger = 1; break;
       case 'swat': ring = MANA.swatRadius; width = 0.1; dot = 0.05; fill = 0.12; spin = 7; dash = 8; break;
       default: break;

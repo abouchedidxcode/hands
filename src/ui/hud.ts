@@ -17,6 +17,7 @@ export class Hud {
   private rallyChip: HTMLElement;
   private rallySecs: HTMLElement;
   private lastKey = '';
+  private barW = 0;
   private lastToast = new Map<string, number>();
   private coachKey = '';
 
@@ -58,9 +59,10 @@ export class Hud {
     this.rallyEl = root.querySelector('.pw.rally')!;
     this.rallyChip = root.querySelector('.rally-chip')!;
     this.rallySecs = root.querySelector('.rally-chip .secs')!;
+    window.addEventListener('resize', () => { this.barW = 0; });
   }
 
-  show(on: boolean) { this.root.classList.toggle('hidden', !on); }
+  show(on: boolean) { this.root.classList.toggle('hidden', !on); this.barW = 0; }
 
   setup(factions: number, levelName: string) {
     this.power.innerHTML = '';
@@ -79,14 +81,16 @@ export class Hud {
 
   update(strength: number[], time: number, mana: number, showMana: boolean, rallyLeft = 0) {
     const total = strength.reduce((a, b) => a + b, 0) || 1;
+    if (!this.barW) this.barW = this.power.clientWidth || 600;
     strength.forEach((s, f) => {
       const seg = this.segs[f];
       if (!seg) return;
       const share = s / total;
       seg.el.style.flexGrow = String(Math.max(0.0001, share));
       seg.el.classList.toggle('dead', s <= 0);
-      seg.el.classList.toggle('narrow', share < 0.2);
-      seg.el.classList.toggle('tiny', share < 0.075);
+      const px = share * this.barW;
+      seg.el.classList.toggle('narrow', px < 46 + seg.name.textContent!.length * 9);
+      seg.el.classList.toggle('tiny', px < 34);
       seg.num.textContent = String(Math.round(s));
     });
     const m = Math.floor(time / 60), s = Math.floor(time % 60);

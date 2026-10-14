@@ -18,14 +18,24 @@ export class Sim {
   alive: boolean[];
   over = false;
   winner = -99;
-  mana: number = MANA.max * 0.5;
-  stats: Stats = { captures: 0, lost: 0, kills: 0, smites: 0, swats: 0, rallies: 0, sent: 0, peakArmy: 0 };
+  /** Factions controlled by humans (have mana, powers and stats). Campaign: [PLAYER]; online 1v1: [0, 1]. */
+  humans: number[] = [PLAYER];
+  manaOf: number[];
+  statsOf: Stats[];
+  rallyUntilOf: number[];
   /** Per-faction growth multiplier (difficulty handicap; warlords set their own from AiParams.bonus). */
   growthMul: number[];
+  // ---- single-player compatibility accessors (faction PLAYER)
+  get mana() { return this.manaOf[PLAYER]; }
+  set mana(v: number) { this.manaOf[PLAYER] = v; }
+  get stats() { return this.statsOf[PLAYER]; }
   /** Sim time until which the player's RALLY is active (-1 = never). */
-  rallyUntil = -1;
-  /** When false (attract mode), the player faction is AI-controlled / absent and mana is ignored. */
-  hasPlayer = true;
+  get rallyUntil() { return this.rallyUntilOf[PLAYER]; }
+  set rallyUntil(v: number) { this.rallyUntilOf[PLAYER] = v; }
+  /** When false (attract mode), nobody is human: mana and stats are ignored. */
+  get hasPlayer() { return this.humans.length > 0; }
+  set hasPlayer(v: boolean) { this.humans = v ? [PLAYER] : []; }
+  isHuman(f: number) { return this.humans.includes(f); }
 
   private nextUnitId = 1;
   private unitById = new Map<number, Unit>();
@@ -40,6 +50,9 @@ export class Sim {
     this.factions = factions;
     this.alive = Array.from({ length: factions }, () => true);
     this.growthMul = Array.from({ length: factions }, () => 1);
+    this.manaOf = Array.from({ length: factions }, () => MANA.startMana);
+    this.statsOf = Array.from({ length: factions }, () => ({ captures: 0, lost: 0, kills: 0, smites: 0, swats: 0, rallies: 0, sent: 0, peakArmy: 0 }));
+    this.rallyUntilOf = Array.from({ length: factions }, () => -1);
     this.gw = Math.ceil((BOARD.width + 8) / CELL);
     this.gh = Math.ceil((BOARD.depth + 8) / CELL);
     this.head = new Int32Array(this.gw * this.gh);
@@ -60,20 +73,20 @@ export class Sim {
       this.events.push({ type: 'launch', from: id, to, faction, count: n });
       total += n;
     }
-    if (faction === PLAYER) this.stats.sent += total;
+    if (this.isHuman(faction)) this.statsOf[faction].sent += total;
     return total;
   }
 
-  canSmite(): boolean { return this.mana >= MANA.smiteCost; }
+  canSmite(f = PLAYER): boolean { return this.manaOf[f] >= MANA.smiteCost && !this.over; }
 
-  /** Player lightning. Kills enemy units in radius and damages a non-player base inside. */
-  smite(x: number, z: number): number {
-    if (!this.canSmite()) return -1;
-    this.mana -= MANA.smiteCost;
+  /** God lightning. Kills enemy units in radius and damages a hostile base inside. */
+  smite(x: number, z: number, f = PLAYER): number {
+    if (!this.canSmite(f)) return -1;
+    this.manaOf[f] -= MANA.smiteCost;
     const r = MANA.smiteRadius;
     let kills = 0;
     for (const u of this.units) {
-      if (!u.alive || u.faction === PLAYER) continue;
+      if (!u.alive || u.faction === f) continue;
       const dx = u.x - x, dz = u.z - z;
       if (dx * dx + dz * dz < r * r) {
         this.kill(u);
@@ -83,48 +96,48 @@ export class Sim {
       }
     }
     for (const b of this.bases) {
-      if (b.owner === PLAYER) continue;
+      if (b.owner === f) continue;
       if (Math.hypot(b.x - x, b.z - z) < r + b.radius * 0.5) {
         b.troops = Math.max(0, b.troops - MANA.smiteBaseDamage);
         b.lastHit = this.time;
       }
     }
-    this.stats.kills += kills;
-    this.stats.smites++;
-    this.events.push({ type: 'smite', x, z, kills, radius: r });
+    this.statsOf[f].kills += kills;
+    this.statsOf[f].smites++;
+    this.events.push({ type: 'smite', x, z, kills, radius: r, faction: f });
     return kills;
   }
 
-  rallyActive(): boolean { return this.time < this.rallyUntil; }
-  canRally(): boolean { return this.mana >= MANA.rallyCost && !this.over; }
+  rallyActive(f = PLAYER): boolean { return this.time < (this.rallyUntilOf[f] ?? -1); }
+  canRally(f = PLAYER): boolean { return this.manaOf[f] >= MANA.rallyCost && !this.over; }
 
-  /** Player RALLY (clap): for a few seconds player units march faster and player bases grow faster. */
-  rally(): boolean {
-    if (!this.canRally()) return false;
-    this.mana -= MANA.rallyCost;
-    this.rallyUntil = this.time + MANA.rallyDuration;
-    this.stats.rallies++;
-    this.events.push({ type: 'rally', until: this.rallyUntil });
+  /** RALLY (clap): for a few seconds the faction's units march faster and its bases grow faster. */
+  rally(f = PLAYER): boolean {
+    if (!this.canRally(f)) return false;
+    this.manaOf[f] -= MANA.rallyCost;
+    this.rallyUntilOf[f] = this.time + MANA.rallyDuration;
+    this.statsOf[f].rallies++;
+    this.events.push({ type: 'rally', until: this.rallyUntilOf[f], faction: f });
     return true;
   }
 
   /** Palm swat: flings enemy units under the palm. Costs mana per unit. */
-  swat(x: number, z: number, radius: number, vx: number, vz: number): number {
+  swat(x: number, z: number, radius: number, vx: number, vz: number, f = PLAYER): number {
     let kills = 0;
     const sp = Math.hypot(vx, vz) + 0.001;
     for (const u of this.units) {
-      if (!u.alive || u.faction === PLAYER) continue;
-      if (this.mana < MANA.swatCostPerUnit) break;
+      if (!u.alive || u.faction === f) continue;
+      if (this.manaOf[f] < MANA.swatCostPerUnit) break;
       const dx = u.x - x, dz = u.z - z;
       if (dx * dx + dz * dz < radius * radius) {
         this.kill(u);
-        this.mana -= MANA.swatCostPerUnit;
+        this.manaOf[f] -= MANA.swatCostPerUnit;
         kills++;
         const k = 7 + Math.random() * 5;
         this.events.push({ type: 'fling', x: u.x, z: u.z, vx: (vx / sp) * k + dx * 2, vz: (vz / sp) * k + dz * 2, faction: u.faction });
       }
     }
-    if (kills) { this.stats.kills += kills; this.stats.swats++; }
+    if (kills) { this.statsOf[f].kills += kills; this.statsOf[f].swats++; }
     return kills;
   }
 
@@ -165,15 +178,14 @@ export class Sim {
     this.time += dt;
 
     // Growth
-    const rally = this.rallyActive();
     for (const b of this.bases) {
       if (b.owner === NEUTRAL) continue;
-      const g = b.growth * (this.growthMul[b.owner] ?? 1) * (rally && b.owner === PLAYER ? MANA.rallyGrowth : 1);
+      const g = b.growth * (this.growthMul[b.owner] ?? 1) * (this.rallyActive(b.owner) ? MANA.rallyGrowth : 1);
       if (b.troops < b.cap) b.troops = Math.min(b.cap, b.troops + g * dt);
       else b.troops = Math.max(b.cap, b.troops - SIM.overflowDecay * dt);
     }
 
-    if (this.hasPlayer && !this.over) this.mana = Math.min(MANA.max, this.mana + MANA.regen * dt);
+    if (!this.over) for (const f of this.humans) this.manaOf[f] = Math.min(MANA.max, this.manaOf[f] + MANA.regen * dt);
 
     this.spawnFromLaunches(dt);
     this.moveUnits(dt);
@@ -182,9 +194,9 @@ export class Sim {
     this.compact();
     this.checkEnd();
 
-    if (this.hasPlayer) {
-      const s = this.strength()[PLAYER] || 0;
-      if (s > this.stats.peakArmy) this.stats.peakArmy = Math.round(s);
+    if (this.humans.length) {
+      const str = this.strength();
+      for (const f of this.humans) if ((str[f] || 0) > this.statsOf[f].peakArmy) this.statsOf[f].peakArmy = Math.round(str[f]);
     }
   }
 
@@ -230,10 +242,10 @@ export class Sim {
   }
 
   private moveUnits(dt: number) {
-    const boost = this.rallyActive() ? MANA.rallySpeed : 1;
+    const boost = this.rallyUntilOf.map((_, f) => (this.rallyActive(f) ? MANA.rallySpeed : 1));
     for (const u of this.units) {
       if (!u.alive) continue;
-      const sp = u.faction === PLAYER ? u.speed * boost : u.speed;
+      const sp = u.speed * boost[u.faction];
       u.x += u.dx * sp * dt;
       u.z += u.dz * sp * dt;
       const t = this.bases[u.to];
@@ -263,9 +275,12 @@ export class Sim {
       b.captureTime = this.time;
       b.fireTimer = 0.6;
       this.events.push({ type: 'capture', base: b.id, from: prev, to: u.faction });
-      if (this.hasPlayer) {
-        if (u.faction === PLAYER) { this.stats.captures++; this.mana = Math.min(MANA.max, this.mana + MANA.perCapture); }
-        else if (prev === PLAYER) this.stats.lost++;
+      if (this.isHuman(u.faction)) {
+        this.statsOf[u.faction].captures++;
+        this.manaOf[u.faction] = Math.min(MANA.max, this.manaOf[u.faction] + MANA.perCapture);
+      }
+      if (prev >= 0 && this.isHuman(prev)) {
+        this.statsOf[prev].lost++;
       }
     }
   }
@@ -303,8 +318,12 @@ export class Sim {
             const dx = v.x - u.x, dz = v.z - u.z;
             if (dx * dx + dz * dz < r2) {
               this.kill(u); this.kill(v);
-              if (this.hasPlayer && (u.faction === PLAYER || v.faction === PLAYER)) this.stats.kills++;
-              if (this.hasPlayer && (u.faction === PLAYER || v.faction === PLAYER)) this.mana = Math.min(MANA.max, this.mana + MANA.perKill);
+              for (const f of this.humans) {
+                if (u.faction === f || v.faction === f) {
+                  this.statsOf[f].kills++;
+                  this.manaOf[f] = Math.min(MANA.max, this.manaOf[f] + MANA.perKill);
+                }
+              }
               this.events.push({ type: 'clash', x: (u.x + v.x) / 2, z: (u.z + v.z) / 2, a: u.faction, b: v.faction });
               found = true;
               break;
@@ -345,9 +364,8 @@ export class Sim {
       const u = this.unitById.get(a.unit);
       if (u && u.alive) {
         this.kill(u);
-        if (this.hasPlayer && (u.faction === PLAYER || this.bases[a.base].owner === PLAYER)) {
-          if (u.faction !== PLAYER) this.stats.kills++;
-        }
+        const shooter = this.bases[a.base].owner;
+        if (shooter >= 0 && shooter !== u.faction && this.isHuman(shooter)) this.statsOf[shooter].kills++;
         this.events.push({ type: 'arrowKill', x: u.x, z: u.z, faction: u.faction });
       }
       this.arrows.splice(i, 1);
@@ -381,9 +399,10 @@ export class Sim {
       }
     }
     const living = this.alive.map((a, i) => (a ? i : -1)).filter((i) => i >= 0);
-    if (this.hasPlayer) {
-      if (!this.alive[PLAYER]) { this.over = true; this.winner = living[0] ?? 1; }
-      else if (living.length === 1) { this.over = true; this.winner = PLAYER; }
+    if (this.humans.length === 1) {
+      const me = this.humans[0];
+      if (!this.alive[me]) { this.over = true; this.winner = living[0] ?? -1; }
+      else if (living.length === 1) { this.over = true; this.winner = me; }
     } else if (living.length <= 1) {
       this.over = true; this.winner = living[0] ?? -1;
     }

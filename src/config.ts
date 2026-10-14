@@ -44,6 +44,7 @@ export const MANA = {
   regen: 3.2,
   perCapture: 12,
   perKill: 0.08,
+  startMana: 25,           // enough to feel the bar, not enough for an opening smite
   smiteCost: 35,
   smiteRadius: 3.2,
   smiteBaseDamage: 12,

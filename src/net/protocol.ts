@@ -1,4 +1,6 @@
-import type { Base, GameEvent, Unit } from '../game/types';
+import { MANA } from '../config';
+import type { Sim } from '../game/sim';
+import type { GameEvent } from '../game/types';
 
 /**
  * Host-authoritative state sync. The host runs the real Sim; the guest receives compact binary
@@ -18,10 +20,11 @@ const HEADER = 1 + 4 + 1 + 1 + 4 * 4 + 1 + 2;
 const PER_BASE = 1 + 2 + 2;
 const PER_UNIT = 4 + 2 + 2 + 1 + 1 + 1 + 1 + 1;
 
-export function encodeSnapshot(
-  time: number, over: boolean, winner: number, mana: number[], rallyUntil: number[], bases: Base[], units: Unit[],
-): ArrayBuffer {
-  const alive = units.filter((u) => u.alive);
+export function encodeSnapshot(sim: Sim): ArrayBuffer {
+  const { time, over, winner, bases } = sim;
+  const mana = sim.manaOf, rallyUntil = sim.rallyUntilOf;
+  const boost = rallyUntil.map((_, f) => (sim.rallyActive(f) ? MANA.rallySpeed : 1));
+  const alive = sim.units.filter((u) => u.alive);
   const n = Math.min(alive.length, 65535);
   const buf = new ArrayBuffer(HEADER + bases.length * PER_BASE + n * PER_UNIT);
   const v = new DataView(buf);
@@ -51,7 +54,7 @@ export function encodeSnapshot(
     v.setInt8(o, Math.round(u.dz * 127)); o += 1;
     v.setUint8(o, u.faction); o += 1;
     v.setUint8(o, u.to); o += 1;
-    v.setUint8(o, Math.min(255, Math.round(u.speed * 40))); o += 1;
+    v.setUint8(o, Math.min(255, Math.round(u.speed * (boost[u.faction] ?? 1) * 40))); o += 1;
   }
   return buf;
 }

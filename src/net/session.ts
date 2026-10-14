@@ -79,16 +79,18 @@ export class NetSession {
     }, 2000);
   }
 
-  /** Restart handshake for a rematch (host picks a new seed). */
+  /** Tell the opponent we'd like a rematch. */
+  wantRematch() { this.channel.send('rematch', {}, this.peer); }
+
+  /** Both agreed: restart the start handshake (host picks a new seed, guest waits for it). */
   rematch(seed?: number) {
     this.started = false;
-    if (this.host) {
-      this.seed = seed ?? (Math.random() * 1e9) | 0;
-      const offer = () => this.channel.send('start', { v: PROTO, seed: this.seed }, this.peer);
-      window.clearInterval(this.startTimer);
-      offer();
-      this.startTimer = window.setInterval(offer, 700);
-    } else this.channel.send('rematch', {}, this.peer);
+    if (!this.host) return;
+    this.seed = seed ?? (Math.random() * 1e9) | 0;
+    const offer = () => this.channel.send('start', { v: PROTO, seed: this.seed }, this.peer);
+    window.clearInterval(this.startTimer);
+    offer();
+    this.startTimer = window.setInterval(offer, 700);
   }
 
   sendCommand(c: Command) { this.channel.send('cmd', c, this.peer); }

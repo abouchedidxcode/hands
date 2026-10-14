@@ -53,9 +53,9 @@ export type GameEvent =
   | { type: 'capture'; base: number; from: number; to: number }
   | { type: 'arrow'; base: number; x: number; z: number; tx: number; tz: number }
   | { type: 'arrowKill'; x: number; z: number; faction: number }
-  | { type: 'smite'; x: number; z: number; kills: number; radius: number }
+  | { type: 'smite'; x: number; z: number; kills: number; radius: number; faction?: number }
   | { type: 'fling'; x: number; z: number; vx: number; vz: number; faction: number }
-  | { type: 'rally'; until: number }
+  | { type: 'rally'; until: number; faction?: number }
   | { type: 'eliminated'; faction: number }
   | { type: 'end'; winner: number };
 

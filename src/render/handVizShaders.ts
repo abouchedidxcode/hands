@@ -57,22 +57,25 @@ void main() {
   vec3 V = normalize(cameraPosition - vW);
   vec3 N = normalize(vN);
   float ndv = clamp(dot(N, V), 0.0, 1.0);
-  float fres = pow(1.0 - ndv, 3.4);
+  float fres = pow(1.0 - ndv, 3.0);
   float lam = clamp(dot(N, uLight) * 0.5 + 0.5, 0.0, 1.0);
 
   float heat = uHeat;
   // soft wispy body
   float n2 = gh_noise(vW * 1.3 + vec3(uTime * 0.21, -uTime * 0.37, uTime * 0.17));
-  vec3 col = uBody * (0.28 + 0.7 * lam) * (0.7 + 0.6 * n2);
+  vec3 col = uBody * (0.2 + 0.6 * lam) * (0.65 + 0.7 * n2);
   // energy pulses streaming wrist -> fingertips
   float band = pow(0.5 + 0.5 * sin((flow * 3.2 - uTime * (0.55 + heat * 1.6)) * 6.2831), 10.0);
   float scan = smoothstep(0.82, 1.0, 0.5 + 0.5 * sin(vW.z * 30.0 + vW.x * 4.0 - uTime * 3.5));
   col += uBody * (band * (0.5 + heat * 0.6) + scan * 0.2);
+  // aether currents drifting through the body
+  float cur = 1.0 - abs(gh_noise(vW * 1.7 + vec3(-uTime * 0.3, uTime * 0.45, uTime * 0.6)) * 2.0 - 1.0);
+  col += uBody * pow(cur, 7.0) * 1.3;
   // rim light
-  col += uRim * fres * (0.62 + heat * 0.35 + uArmed * 0.35);
+  col += uRim * fres * (0.85 + heat * 0.3 + uArmed * 0.4);
   // fingertips (thumb + index light up when pinching)
   float sel = 1.0 - step(1.5, fid);
-  float tipG = pow(tip, 3.0) * (uTip + uPinch * sel * 1.1 + heat * 0.25 + uArmed * 0.25);
+  float tipG = pow(tip, 3.0) * (uTip + uPinch * sel * 0.65 + heat * 0.25 + uArmed * 0.25);
   col += uRim * tipG;
   // charge: hand heats up, crackling veins appear and densify
   float r = 1.0 - abs(gh_noise(vW * 3.4 + vec3(uTime * 1.7, uTime * 5.0, -uTime * 2.3)) * 2.0 - 1.0);
@@ -81,7 +84,7 @@ void main() {
   col += uHot * veins * (0.55 + uArmed * 0.45);
   col += uHot * edge * 1.6;
 
-  float a = (0.15 + 0.6 * fres + tipG * 0.2 + veins * 0.2 + heat * 0.08) * fade;
+  float a = (0.1 + 0.62 * fres + tipG * 0.2 + veins * 0.2 + heat * 0.1) * fade;
   a = clamp(a, 0.0, 0.92);
   col *= fade;
   if (uGhost > 0.0) {

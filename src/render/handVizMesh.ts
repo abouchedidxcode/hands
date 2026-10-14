@@ -247,7 +247,7 @@ export class HandSurface {
     // wrist fade: vertices behind the wrist dissolve into the air
     const fadeAt = (x: number, y: number, z: number) => {
       const d = ((x - p[0].x) * axis.x + (y - p[0].y) * axis.y + (z - p[0].z) * axis.z) / span;
-      return 0.35 + 0.65 * THREE.MathUtils.smoothstep(d, -0.12, 0.3);
+      return 0.1 + 0.9 * THREE.MathUtils.smoothstep(d, -0.12, 0.35);
     };
     const c = this.c.copy(ctr).addScaledVector(pn, th * 1.05);
     put(vo, c.x, c.y, c.z, pn.x, pn.y, pn.z, fadeAt(c.x, c.y, c.z));

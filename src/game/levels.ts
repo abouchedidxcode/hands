@@ -71,3 +71,12 @@ export function skirmish(seed: number): Level {
     ai: { think: 1.6, aggro: 0.45, focusPlayer: 1.05, cunning: 0.5 },
   };
 }
+
+/** Online 1v1 level (no AI, mirrored map). */
+export function versus(seed: number): Level {
+  return {
+    id: 200, name: 'Duel', subtitle: 'Online 1v1', par: 999,
+    map: { seed, enemies: 1, bases: 15, neutralMul: 1, playerStart: 40, enemyStart: 40 },
+    ai: { think: 99, aggro: 0, focusPlayer: 1 },
+  };
+}

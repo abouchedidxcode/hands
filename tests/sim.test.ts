@@ -36,3 +36,19 @@ describe('sim', () => {
     expect(sim.stats.captures).toBe(1);
   });
 });
+
+import { generateVersusMap } from '../src/game/mapgen';
+describe('versus map', () => {
+  it('is point-symmetric and has both capitals', () => {
+    for (let seed = 1; seed < 40; seed++) {
+      const b = generateVersusMap(seed * 977);
+      expect(b[0].owner).toBe(0);
+      expect(b[1].owner).toBe(1);
+      expect(b.length).toBeGreaterThanOrEqual(11);
+      for (const x of b) {
+        const twin = b.find((y) => Math.abs(y.x + x.x) < 1e-6 && Math.abs(y.z + x.z) < 1e-6);
+        expect(twin?.type).toBe(x.type);
+      }
+    }
+  });
+});
