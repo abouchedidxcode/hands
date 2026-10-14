@@ -1,7 +1,8 @@
 import './style.css';
 import * as THREE from 'three';
 import { BOARD, FACTION_NAMES, factionColor, MANA, PLAYER } from './config';
-import { audio } from './audio/audio';
+import { audio, audioStream } from './audio/audio';
+import { ClipRecorder } from './record/recorder';
 import { Warlord } from './game/ai';
 import { LEVELS, skirmish, type Level } from './game/levels';
 import { generateMap } from './game/mapgen';
@@ -56,6 +57,7 @@ const unitViews = new UnitViews(ground);
 stage.scene.add(baseViews.group, unitViews.group);
 
 const tutorial = new Tutorial();
+const recorder = new ClipRecorder();
 const commander = new Commander(stage, ground, {
   pinch: () => audio.play('pinch'),
   select: (_i, b) => {
@@ -80,7 +82,8 @@ const commander = new Commander(stage, ground, {
     audio.play('smite', { pan: pan(x) });
     audio.setCharge(0);
     stage.shake(1.0);
-    stage.flash(0.45);
+    stage.flash(0.16);
+    recorder.banner(kills > 0 ? `SMITE ×${kills}` : 'SMITE', '#fff3a8');
     if (kills >= 12) hud.toast(`SMITE ×${kills}`, '#fff3a8', false, 'smite', 0.2);
     else if (kills > 0) hud.toast(`×${kills}`, '#fff3a8', true, 'smite', 0.2);
   },
@@ -89,6 +92,7 @@ const commander = new Commander(stage, ground, {
     tutorial.counters.swatKills += kills;
     audio.play('swat', { pan: pan(x) });
     stage.shake(0.25);
+    if (kills >= 3) recorder.banner(`SWAT ×${kills}`, '#ffffff');
     if (kills >= 6) hud.toast(`SWAT ×${kills}`, '#ffffff', true, 'swat', 0.4);
   },
 });
@@ -194,7 +198,7 @@ function setState(s: State) {
       screenEl.innerHTML = screens.pause();
       buttons.hold(1.0);
       $('b-resume').onclick = () => setState('play');
-      $('b-quit').onclick = () => { tutorial.stop(hud); setState('menu'); };
+      $('b-quit').onclick = () => { tutorial.stop(hud); recorder.stop(true); setState('menu'); };
       break;
     case 'results': {
       const sim = world!.sim;
@@ -218,6 +222,21 @@ function setState(s: State) {
       const next = document.getElementById('b-next');
       if (next) next.onclick = () => startLevel(lvl.id >= 100 ? skirmish(Math.floor(Math.random() * 100000)) : LEVELS[lvl.id]);
       tutorial.stop(hud);
+      recorder.stop();
+      if (recorder.supported) {
+        const row = screenEl.querySelector('.orbs');
+        if (row) {
+          row.insertAdjacentHTML('afterbegin', '<div class="hb small gold" data-hb id="b-clip"><div class="icon">🎬</div>CLIP<div class="sub">save video</div></div>');
+          $('b-clip').onclick = () => {
+            const name = `godhand-${lvl.name.toLowerCase().replace(/[^a-z0-9]+/g, '-')}`;
+            const go = (tries: number) => {
+              if (recorder.download(name)) hud.toast('CLIP SAVED', '#ffd166', true, 'clip', 0);
+              else if (tries > 0) setTimeout(() => go(tries - 1), 300);
+            };
+            go(10);
+          };
+        }
+      }
       break;
     }
   }
@@ -228,6 +247,7 @@ function startLevel(level: Level) {
   loadWorld(level, false);
   endTimer = -1;
   timeScale = 1;
+  recorder.start(level.tutorial ? 'Training' : level.id >= 100 ? 'Skirmish' : `Level ${level.id} · ${level.name}`, audioStream());
   if (level.tutorial) tutorial.start(world!.sim, commander);
   else { commander.allowSmite = commander.allowSwat = commander.allowSend = true; }
   setState('countdown');
@@ -278,6 +298,7 @@ function processEvents(events: GameEvent[], sim: Sim, isAttract: boolean) {
           tutorial.counters.captured++;
           audio.play('capture', { pan: pan(b.x) });
           stage.shake(0.18);
+          recorder.banner(e.from === -1 ? 'CAPTURED!' : 'STOLEN!', factionColor(PLAYER));
           hud.toast(e.from === -1 ? 'CAPTURED!' : `STOLEN FROM ${FACTION_NAMES[e.from].toUpperCase()}!`, factionColor(PLAYER), e.from === -1, 'cap', 0.5);
         } else if (e.from === PLAYER) {
           audio.play('lost', { pan: pan(b.x) });
@@ -309,6 +330,7 @@ function processEvents(events: GameEvent[], sim: Sim, isAttract: boolean) {
           endTimer = 2.2;
           timeScale = 0.35;
           audio.play(e.winner === PLAYER ? 'victory' : 'defeat');
+          recorder.banner(e.winner === PLAYER ? 'VICTORY' : 'DEFEAT', e.winner === PLAYER ? '#ffe08a' : '#ff8095', true);
           hud.toast(e.winner === PLAYER ? 'VICTORY' : 'DEFEAT', e.winner === PLAYER ? '#ffe08a' : '#ff8095', false, 'end', 0);
         }
         break;
@@ -444,6 +466,10 @@ function tick(now: number) {
     ground,
   );
   stage.render(rawDt);
+  if (recorder.recording && world) {
+    recorder.setBars(world.sim.strength().map((_, f) => factionColor(f)), world.sim.strength());
+    recorder.capture(canvas, input.status === 'running' ? video : null, frame);
+  }
 
   if (!pipEl.classList.contains('hidden')) {
     drawPip(pipCanvas, frame, input);
@@ -459,7 +485,7 @@ requestAnimationFrame(tick);
 // Debug / test hooks
 declare global { interface Window { __godhand: unknown } }
 window.__godhand = {
-  input, stage, audio,
+  input, stage, audio, recorder,
   get state() { return state; },
   get world() { return world; },
   get commander() { return commander; },

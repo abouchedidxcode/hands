@@ -41,10 +41,6 @@ interface Bump { x: number; z: number; R: number; A: number }
 const dist2 = (a: number, b: number) => Math.sqrt(a * a + b * b);
 
 export function buildTerrain(spec: TerrainSpec): Terrain {
-  const __t0 = performance.now();
-  let __tl = __t0;
-  const __timings: Record<string, number> = {};
-  const T = (k: string) => { const n = performance.now(); __timings[k] = n - __tl; __tl = n; };
   const rng = makeRng(spec.seed);
   const nCoast = makeSimplex2(rng);
   const nRoll = makeSimplex2(rng);
@@ -86,16 +82,17 @@ export function buildTerrain(spec: TerrainSpec): Terrain {
   /** Main island coast parameter: > 0 on land (≈ distance inland), < 0 at sea. */
   const RC = 9; // corner radius of the island's base shape
   function mainCoast(x: number, z: number, dRect: number): number {
-    const wx = x + 4.0 * nCoast(x * 0.04 + 11.1, z * 0.04);
+    const n1 = nCoast(x * 0.04 + 11.1, z * 0.04);
+    const wx = x + 4.0 * n1;
     const wz = z + 4.0 * nCoast(x * 0.04, z * 0.04 - 23.7);
     // rounded-rect base shape (rounder than the playable rect)
     const qx = Math.abs(wx) - (hw + 1.5) + RC, qz = Math.abs(wz) - (hd + 1.5) + RC;
     const ox = qx > 0 ? qx : 0, oz = qz > 0 ? qz : 0;
     const dShape = Math.sqrt(ox * ox + oz * oz) + Math.min(Math.max(qx, qz), 0) - RC;
-    const margin = 6.5 + 4.6 * fbm(nCoast, wx * 0.05, wz * 0.05, 3) + 0.7 * nCoast(wx * 0.24, wz * 0.24);
+    const margin = 6.5 + 4.6 * fbm(nCoast, wx * 0.05, wz * 0.05, 2) + 0.8 * nCoast(wx * 0.22, wz * 0.22);
     const p = margin - dShape;
     // smooth max with a guaranteed land band around the playable rect
-    const g = 2.7 + 0.9 * nCoast(x * 0.11 - 31, z * 0.11 + 17) - dRect;
+    const g = 2.7 + 1.1 * n1 - dRect;
     const k = 1.2;
     const h = clamp(0.5 + 0.5 * (p - g) / k, 0, 1);
     return lerp(g, p, h) + k * h * (1 - h);
@@ -224,8 +221,8 @@ export function buildTerrain(spec: TerrainSpec): Terrain {
           // grass colour field with patchy meadows
           const g = nColor(x * 0.085, z * 0.085);
           vcol.copy(COL.grassA).lerp(COL.grassB, smoothstep(-0.3, 0.5, g));
-          vcol.lerp(COL.grassLight, 0.6 * smoothstep(0.1, 0.75, nColor(x * 0.12 + 40, z * 0.12 - 9)));
-          vcol.lerp(COL.grassDark, 0.7 * smoothstep(0.15, 0.8, nColor(x * 0.1 - 70, z * 0.1 + 20)));
+          vcol.lerp(COL.grassLight, 0.45 * smoothstep(0.1, 0.75, nColor(x * 0.12 + 40, z * 0.12 - 9)));
+          vcol.lerp(COL.grassDark, 0.6 * smoothstep(0.15, 0.8, nColor(x * 0.1 - 70, z * 0.1 + 20)));
           // darker, lusher floor under forests
           const fd = smoothstep(-0.05, 0.35, forestAt(x, z)) * (1 - 0.72 * insideAmt(x, z));
           if (fd > 0) vcol.lerp(COL.forestFloor, 0.55 * fd);
@@ -272,12 +269,11 @@ export function buildTerrain(spec: TerrainSpec): Terrain {
     }
     return m;
   }
-  T('height');
 
   // ---------------------------------------------------------------- coast distance fields
-  // Sampled at 2× lattice resolution: water depth, distance to land (sea side, for foam)
+  // Sampled at 1.5× lattice resolution: water depth, distance to land (sea side, for foam)
   // and distance to water (land side, for beaches and shoreline props).
-  const TW = NX * 2, TH = NZ * 2;
+  const TW = Math.round(NX * 1.5), TH = Math.round(NZ * 1.5);
   const tdx = (2 * halfX) / TW, tdz = (2 * halfZ) / TH;
   const coastData = new Uint8Array(TW * TH * 4);
   const seaDist = new Float32Array(TW * TH);
@@ -337,7 +333,6 @@ export function buildTerrain(spec: TerrainSpec): Terrain {
     const j = clamp(Math.floor((z - minZ) / tdz), 0, TH - 1);
     return landDist[j * TW + i];
   }
-  T('coastFields');
 
 
   // ---------------------------------------------------------------- materials
@@ -397,8 +392,9 @@ float tcNoise(vec2 p) {
   const pos = new Float32Array(triCount * 9);
   const nor = new Float32Array(triCount * 9);
   const col = new Float32Array(triCount * 9);
-  const tmp = new THREE.Color();
-  const tmp2 = new THREE.Color();
+  const rgb = (c: THREE.Color) => [c.r, c.g, c.b];
+  const WS = rgb(COL.wetSand), SB1 = rgb(COL.seabedShallow), SB2 = rgb(COL.seabedDeep), SA = rgb(COL.sand);
+  const RK = rgb(COL.rock), RL = rgb(COL.rockLight), RD = rgb(COL.rockDark);
   let ti = 0;
 
   function pushTri(a: number, b: number, c: number, ax: number, az: number, bx: number, bz: number, cx: number, cz: number) {
@@ -409,35 +405,45 @@ float tcNoise(vec2 p) {
     const nl = 1 / Math.sqrt(nx * nx + ny * ny + nz * nz);
     nx *= nl; ny *= nl; nz *= nl;
 
-    // ---- face colour
+    // ---- face colour (plain arithmetic: this runs ~40k times, often before the JIT warms up)
     const fy = (ay + by + cy) / 3;
     const jit = rng() - 0.5;
-    const shoreN = (SN[a] + SN[b] + SN[c]) / 3;
+    let r: number, g: number, bl: number;
     if (fy < WATER_LEVEL + 0.05) {
       const dpt = WATER_LEVEL - fy;
-      tmp.copy(COL.wetSand).lerp(COL.seabedShallow, smoothstep(-0.05, 0.4, dpt)).lerp(COL.seabedDeep, smoothstep(0.6, 3.2, dpt));
+      const t1 = smoothstep(-0.05, 0.4, dpt), t2 = smoothstep(0.6, 3.2, dpt);
+      r = lerp(lerp(WS[0], SB1[0], t1), SB2[0], t2);
+      g = lerp(lerp(WS[1], SB1[1], t1), SB2[1], t2);
+      bl = lerp(lerp(WS[2], SB1[2], t1), SB2[2], t2);
     } else {
-      tmp.setRGB((VC[a * 3] + VC[b * 3] + VC[c * 3]) / 3, (VC[a * 3 + 1] + VC[b * 3 + 1] + VC[c * 3 + 1]) / 3, (VC[a * 3 + 2] + VC[b * 3 + 2] + VC[c * 3 + 2]) / 3);
+      r = (VC[a * 3] + VC[b * 3] + VC[c * 3]) / 3;
+      g = (VC[a * 3 + 1] + VC[b * 3 + 1] + VC[c * 3 + 1]) / 3;
+      bl = (VC[a * 3 + 2] + VC[b * 3 + 2] + VC[c * 3 + 2]) / 3;
       // beach: by distance from the coastline (not by height)
+      const shoreN = (SN[a] + SN[b] + SN[c]) / 3;
       const sd = shoreDist((ax + bx + cx) / 3, (az + bz + cz) / 3);
       const sandT = Math.max(1 - smoothstep(0.85, 1.4, sd + shoreN), 1 - smoothstep(WATER_LEVEL + 0.05, WATER_LEVEL + 0.1, fy));
       if (sandT > 0) {
-        tmp2.copy(COL.sand).lerp(COL.wetSand, 1 - smoothstep(WATER_LEVEL + 0.04, WATER_LEVEL + 0.12, fy));
-        tmp.lerp(tmp2, sandT);
+        const wet = 1 - smoothstep(WATER_LEVEL + 0.04, WATER_LEVEL + 0.12, fy);
+        r = lerp(r, lerp(SA[0], WS[0], wet), sandT);
+        g = lerp(g, lerp(SA[1], WS[1], wet), sandT);
+        bl = lerp(bl, lerp(SA[2], WS[2], wet), sandT);
       }
       // rock on slopes and high up
       const rockT = Math.max(1 - smoothstep(0.68, 0.84, ny), smoothstep(1.7, 2.6, fy) * 0.85);
       if (rockT > 0) {
-        tmp2.copy(COL.rock).lerp(fy > 1.6 ? COL.rockLight : COL.rockDark, 0.5 + jit);
-        tmp.lerp(tmp2, rockT);
+        const R2 = fy > 1.6 ? RL : RD, rt = 0.5 + jit;
+        r = lerp(r, lerp(RK[0], R2[0], rt), rockT);
+        g = lerp(g, lerp(RK[1], R2[1], rt), rockT);
+        bl = lerp(bl, lerp(RK[2], R2[2], rt), rockT);
       }
     }
     const kk = 1 + jit * 0.08;
+    r *= kk; g *= kk; bl *= kk;
     const o = ti * 9;
     pos[o] = ax; pos[o + 1] = ay; pos[o + 2] = az;
     pos[o + 3] = bx; pos[o + 4] = by; pos[o + 5] = bz;
     pos[o + 6] = cx; pos[o + 7] = cy; pos[o + 8] = cz;
-    const r = tmp.r * kk, g = tmp.g * kk, bl = tmp.b * kk;
     for (let k = 0; k < 9; k += 3) {
       nor[o + k] = nx; nor[o + k + 1] = ny; nor[o + k + 2] = nz;
       col[o + k] = r; col[o + k + 1] = g; col[o + k + 2] = bl;
@@ -485,7 +491,6 @@ float tcNoise(vec2 p) {
   floor.position.y = SEABED - 0.3;
   group.add(floor);
   disposables.push(floorGeo, floorMat);
-  T('mesh');
 
   // ---------------------------------------------------------------- coast texture
   const coastTex = new THREE.DataTexture(coastData, TW, TH, THREE.RGBAFormat, THREE.UnsignedByteType);
@@ -508,7 +513,6 @@ float tcNoise(vec2 p) {
   group.add(water.mesh);
   disposables.push(water.geometry, water.material);
 
-  T('water');
   // ---------------------------------------------------------------- props
   const treeMat = litMaterial(0.9, 0.035);
   const grassMat = litMaterial(0.9, 0.25);
@@ -532,7 +536,7 @@ float tcNoise(vec2 p) {
   };
 
   // trees / bushes / rocks: jittered grid
-  const SP = 0.85;
+  const SP = 0.9;
   // own function so the JIT optimises (OSR) a small body, not all of buildTerrain
   (function scatterTrees() {
     for (let gz = minZ + SP * 0.5; gz < halfZ; gz += SP) {
@@ -661,9 +665,6 @@ float tcNoise(vec2 p) {
   addInstanced(grassGeometry(), grassMat, kinds.grass, false, 'grass');
   addInstanced(flowerGeometry(), grassMat, kinds.flower, false, 'flowers');
 
-  T('props');
-  __timings.total = performance.now() - __t0;
-  (globalThis as unknown as { __terrainTimings?: unknown }).__terrainTimings = __timings;
   // ---------------------------------------------------------------- API
   return {
     group,

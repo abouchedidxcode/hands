@@ -38,6 +38,7 @@ interface Engine {
   musicDuck: GainNode;
   reverb: ConvolverNode;
   music: Music;
+  limiter: DynamicsCompressorNode;
 }
 
 let E: Engine | null = null;
@@ -90,7 +91,7 @@ function build(ctx: AudioContext): Engine {
 
   const music = new Music(ctx, musicDuck, reverb, kit);
   music.setIntensity(intensity);
-  return { ctx, kit, master, sfxBus, musicDuck, reverb, music };
+  return { ctx, kit, master, sfxBus, musicDuck, reverb, music, limiter };
 }
 
 const MUSIC_LEVEL = 0.5;
@@ -392,6 +393,17 @@ export const audio: {
     } catch { /* ignore */ }
   },
 };
+
+let tap: MediaStreamAudioDestinationNode | null = null;
+/** A MediaStream carrying the final mix (for the clip recorder). Null before unlock. */
+export function audioStream(): MediaStream | null {
+  if (!E) return null;
+  if (!tap) {
+    tap = E.ctx.createMediaStreamDestination();
+    E.limiter.connect(tap);
+  }
+  return tap.stream;
+}
 
 /** Debug info (voices in flight, context state). */
 export function audioStats(): { state: string; voices: number; music: boolean; charge: number } {
