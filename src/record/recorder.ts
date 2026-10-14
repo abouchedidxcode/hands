@@ -5,7 +5,7 @@ const BONES: [number, number][] = [
   [0, 1], [1, 2], [2, 3], [3, 4], [0, 5], [5, 6], [6, 7], [7, 8], [9, 10], [10, 11], [11, 12],
   [13, 14], [14, 15], [15, 16], [0, 17], [17, 18], [18, 19], [19, 20], [5, 9], [9, 13], [13, 17],
 ];
-const HAND_COLORS = ['#8ff1ff', '#ffe3a0'];
+const HAND_COLORS = ['#ffd27a', '#ffb070'];
 const FPS = 30;
 
 interface Banner { text: string; color: string; until: number; big: boolean }
@@ -111,21 +111,21 @@ export class ClipRecorder {
       });
       c.restore();
       c.lineWidth = 3;
-      c.strokeStyle = 'rgba(160,240,255,0.7)';
+      c.strokeStyle = 'rgba(214,170,90,0.95)';
       roundRect(c, px, py, pw, ph, 16);
       c.stroke();
     }
 
     // watermark + title
-    c.font = '400 30px Bungee, Rubik, sans-serif';
+    c.font = '900 30px "Cinzel Decorative", Cinzel, Georgia, serif';
     c.textBaseline = 'top';
     c.lineWidth = 6;
-    c.strokeStyle = 'rgba(0,0,0,0.45)';
+    c.strokeStyle = 'rgba(40,22,6,0.75)';
     c.strokeText('✋ GODHAND', 22, 18);
-    c.fillStyle = '#5fe8ff';
+    c.fillStyle = '#f2c35a';
     c.fillText('✋ GODHAND', 22, 18);
-    c.font = '700 18px Rubik, sans-serif';
-    c.fillStyle = 'rgba(235,250,255,0.9)';
+    c.font = 'italic 19px "IM Fell English", Georgia, serif';
+    c.fillStyle = 'rgba(255,244,220,0.95)';
     c.fillText(this.title, 24, 56);
 
     // army bar
@@ -139,7 +139,7 @@ export class ClipRecorder {
         c.fillRect(x, by, w, bh);
         x += w;
       });
-      c.strokeStyle = 'rgba(255,255,255,0.6)';
+      c.strokeStyle = 'rgba(60,36,12,0.85)';
       c.lineWidth = 2;
       c.strokeRect(bx, by, bw, bh);
     }
@@ -149,12 +149,12 @@ export class ClipRecorder {
     this.banners.forEach((b, i) => {
       const life = (b.until - now) / (b.big ? 2200 : 1300);
       c.globalAlpha = Math.min(1, life * 4);
-      c.font = `400 ${b.big ? 84 : 42}px Bungee, Rubik, sans-serif`;
+      c.font = `900 ${b.big ? 84 : 42}px Cinzel, Georgia, serif`;
       c.textAlign = 'center';
       c.textBaseline = 'middle';
       const y = H * 0.24 + i * 56;
       c.lineWidth = 8;
-      c.strokeStyle = 'rgba(0,0,0,0.4)';
+      c.strokeStyle = 'rgba(40,22,6,0.7)';
       c.strokeText(b.text, W / 2, y);
       c.fillStyle = b.color;
       c.fillText(b.text, W / 2, y);
