@@ -113,7 +113,42 @@ export class Stage {
     return out.set((this.tmp.x + 1) / 2, (1 - this.tmp.y) / 2);
   }
 
+  // ---- adaptive quality: step resolution/effects down if the frame rate sags
+  private qLevel = 0;
+  private slowT = 0;
+  private lastFrame = 0;
+  private frameEma = 1 / 60;
+  private readonly lowres = new URLSearchParams(location.search).has('lowres');
+
+  private adaptQuality() {
+    const now = performance.now();
+    if (this.lastFrame) {
+      const ft = Math.min(0.25, (now - this.lastFrame) / 1000);
+      this.frameEma += (ft - this.frameEma) * 0.05;
+      if (!this.lowres && !document.hidden && this.qLevel < 3 && this.frameEma > 1 / 42) {
+        this.slowT += ft;
+        if (this.slowT > 2.5) { this.slowT = 0; this.setQuality(this.qLevel + 1); }
+      } else this.slowT = Math.max(0, this.slowT - ft);
+    }
+    this.lastFrame = now;
+  }
+
+  /** 0 = full, 1 = 1x DPR, 2 = 0.8x + no bloom, 3 = 0.65x + small shadows. */
+  setQuality(level: number) {
+    this.qLevel = level;
+    const dpr = [Math.min(window.devicePixelRatio, 1.5), 1, 0.8, 0.65][level];
+    this.renderer.setPixelRatio(Math.min(dpr, window.devicePixelRatio));
+    this.bloom.enabled = level < 2;
+    if (level >= 3) { this.sun.shadow.mapSize.set(1024, 1024); this.sun.shadow.map?.dispose(); this.sun.shadow.map = null; }
+    this.resize();
+    this.frameEma = 1 / 60;
+    console.info(`[godhand] quality level ${level} (dpr ${dpr})`);
+  }
+
+  get quality() { return this.qLevel; }
+
   render(dt: number) {
+    this.adaptQuality();
     this.t += dt;
     if (Math.abs(this.zoomCur - this.zoom) > 0.0005) {
       this.zoomCur += (this.zoom - this.zoomCur) * Math.min(1, dt * 2.5);
