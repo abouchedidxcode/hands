@@ -224,6 +224,10 @@ function setState(s: State) {
       break;
     case 'searching':
       screenEl.innerHTML = onlineScreens.searching('FINDING AN OPPONENT');
+      setTimeout(() => {
+        const tag = screenEl.querySelector('.tagline');
+        if (state === 'searching' && tag) tag.textContent = 'Few gods online right now. Keep waiting, or cancel and send a friend a private link.';
+      }, 25000);
       $('b-cancel').onclick = () => { matchmaker.cancel(); setState('online'); };
       break;
     case 'room': {
@@ -573,6 +577,8 @@ function mixColor(a: number, b: number) {
 }
 
 // ------------------------------------------------------------------ main loop
+/** ?norender skips WebGL drawing (automated netcode tests on software GL). */
+const NO_RENDER = new URLSearchParams(location.search).has('norender');
 let last = performance.now();
 let frame: InputFrame;
 let frameCount = 0;
@@ -715,7 +721,7 @@ function tick(now: number) {
     if (now >= handTimer) { handTimer = now + 1000 / 20; net.sendHand(encodeHands(frame)); }
   }
   oppViz.update(online ? decodeHands() : [remoteHandStates[0], remoteHandStates[1]].map((h) => ({ ...h, present: false })), stage, rawDt, stage.t, ['hover', 'hover'], [0, 0], ground);
-  stage.render(rawDt);
+  if (!NO_RENDER) stage.render(rawDt);
   if (recorder.recording && world) {
     recorder.setBars(world.sim.strength().map((_, f) => factionColor(f)), world.sim.strength());
     recorder.capture(canvas, input.status === 'running' ? video : null, frame);

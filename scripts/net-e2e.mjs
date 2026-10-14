@@ -16,13 +16,14 @@ for (let i = 0; i < 2; i++) {
   const p = await ctx.newPage();
   p.on('pageerror', (e) => console.log(`[${i}] pageerror`, e.message));
   p.on('console', (m) => { if (m.type() === 'error') console.log(`[${i}] err`, m.text().slice(0, 200)); });
-  await p.goto(url + '?lowres&nettest', { waitUntil: 'domcontentloaded' });
+  await p.goto(url + '?lowres&nettest&norender', { waitUntil: 'domcontentloaded' });
   pages.push(p);
 }
 await pages[0].waitForTimeout(1500);
 for (const p of pages) await p.click('#b-start');
 await pages[0].waitForTimeout(2500);
-for (const p of pages) await p.evaluate((c) => { const g = window.__godhand; g.unlockAll(); g.setState('menu'); g.joinRoom(c); }, code);
+const quick = process.argv[4] === 'quick';
+for (const p of pages) await p.evaluate(([c, q]) => { const g = window.__godhand; g.unlockAll(); g.setState('menu'); if (q) g.quickMatch(); else g.joinRoom(c); }, [code, quick]);
 const t0 = Date.now();
 for (let k = 0; k < 40; k++) {
   await pages[0].waitForTimeout(2000);
@@ -53,13 +54,12 @@ console.log('host view', hostView, 'guest view', guestView);
 // host smites guest's capital
 await host.evaluate(() => { const s = window.__godhand.world.sim; s.manaOf[0] = 100; s.smite(s.bases[1].x, s.bases[1].z, 0); });
 await host.waitForTimeout(1500);
-await host.screenshot({ path: `${out}/net-host.png` });
-await guest.screenshot({ path: `${out}/net-guest.png` });
+
 // end: host captures everything
 await host.evaluate(() => { const s = window.__godhand.world.sim; for (const b of s.bases) b.owner = 0; s.units.length = 0; s.launches.length = 0; });
 await Promise.all(pages.map((p) => p.waitForFunction(() => window.__godhand.state === 'results', null, { timeout: 240000 })));
 console.log('results:', await Promise.all(pages.map((p) => p.evaluate(() => window.__godhand.world.sim.winner))));
-await guest.screenshot({ path: `${out}/net-guest-results.png` });
+
 // rematch
 for (const p of pages) await p.evaluate(() => document.getElementById('b-rematch').click());
 await Promise.all(pages.map((p) => p.waitForFunction(() => ['countdown', 'play'].includes(window.__godhand.state), null, { timeout: 60000 })));
