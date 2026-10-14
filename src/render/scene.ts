@@ -138,6 +138,9 @@ export class Stage {
     this.qLevel = level;
     const dpr = [Math.min(window.devicePixelRatio, 1.5), 1, 0.8, 0.65][level];
     this.renderer.setPixelRatio(Math.min(dpr, window.devicePixelRatio));
+    // the composer keeps its own pixel ratio: without this its targets stay at the old size
+    // and the frame is drawn zoomed / offset, leaving blank (page-coloured) areas
+    this.composer.setPixelRatio(this.renderer.getPixelRatio());
     this.bloom.enabled = level < 2;
     if (level >= 3) { this.sun.shadow.mapSize.set(1024, 1024); this.sun.shadow.map?.dispose(); this.sun.shadow.map = null; }
     this.resize();

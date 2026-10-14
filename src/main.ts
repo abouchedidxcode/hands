@@ -731,6 +731,44 @@ function tick(now: number) {
 // ------------------------------------------------------------------ boot
 attract();
 setState('boot');
+// ------------------------------------------------------------------ diagnostics (keyboard)
+// D: overlay with sizes + what sits on top of the map; B: bloom; H: 3D hands; P: webcam preview
+const diagEl = document.createElement('pre');
+diagEl.style.cssText = 'position:fixed;left:8px;top:8px;z-index:2147483647;margin:0;padding:8px 10px;max-width:46vw;'
+  + 'font:12px/1.35 ui-monospace,Menlo,monospace;color:#fff;background:rgba(0,0,0,0.82);border-radius:6px;pointer-events:none;white-space:pre-wrap;display:none';
+document.body.appendChild(diagEl);
+const diagOff = { bloom: false, hands: false, pip: false };
+window.addEventListener('keydown', (e) => {
+  const k = e.key.toLowerCase();
+  if (k === 'd') diagEl.style.display = diagEl.style.display === 'none' ? 'block' : 'none';
+  else if (k === 'b') diagOff.bloom = !diagOff.bloom;
+  else if (k === 'h') diagOff.hands = !diagOff.hands;
+  else if (k === 'p') diagOff.pip = !diagOff.pip;
+  else return;
+  stage.bloom.enabled = !diagOff.bloom && stage.quality < 2;
+  handViz.group.visible = !diagOff.hands;
+  pipEl.style.visibility = diagOff.pip ? 'hidden' : '';
+});
+const describeEl = (el: Element | null) => el ? `${el.tagName.toLowerCase()}${el.id ? '#' + el.id : ''}${el.classList.length ? '.' + [...el.classList].join('.') : ''}` : '-';
+setInterval(() => {
+  if (diagEl.style.display === 'none') return;
+  const cv = stage.renderer.domElement, r = cv.getBoundingClientRect();
+  const comp = stage.composer as unknown as { _pixelRatio: number; renderTarget1: { width: number; height: number } };
+  const probes = [[0.1, 0.5], [0.3, 0.5], [0.5, 0.5], [0.7, 0.5], [0.9, 0.5]].map(([x, y]) =>
+    `  ${Math.round(x * 100)}%: ${document.elementsFromPoint(x * innerWidth, y * innerHeight).slice(0, 3).map(describeEl).join(' > ')}`);
+  const f = frame;
+  diagEl.textContent = [
+    `window ${innerWidth}x${innerHeight} dpr ${devicePixelRatio}`,
+    `canvas css ${Math.round(r.left)},${Math.round(r.top)} ${Math.round(r.width)}x${Math.round(r.height)} buffer ${cv.width}x${cv.height}`,
+    `pixelRatio renderer ${stage.renderer.getPixelRatio()} composer ${comp._pixelRatio} target ${comp.renderTarget1.width}x${comp.renderTarget1.height}`,
+    `quality ${stage.quality}  bloom ${stage.bloom.enabled ? 'on' : 'OFF'}  hands3d ${handViz.group.visible ? 'on' : 'OFF'}  pip ${diagOff.pip ? 'OFF' : 'on'}  state ${state}`,
+    `context lost ${stage.renderer.getContext().isContextLost()}`,
+    ...f.hands.map((h, i) => `hand${i} ${h.present ? `${h.gesture} x ${h.x.toFixed(2)} y ${h.y.toFixed(2)} mode ${commander.modes[i]}` : '-'}`),
+    'top elements at mid-height:', ...probes,
+    'keys: D overlay · B bloom · H 3D hands · P webcam preview',
+  ].join('\n');
+}, 250);
+
 requestAnimationFrame(tick);
 
 // Debug / test hooks
