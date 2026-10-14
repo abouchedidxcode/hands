@@ -997,7 +997,7 @@ export class Fx {
     this.flashI *= Math.exp(-dt * 9);
     if (this.flashI < 0.002) this.flashI = 0;
     this.flash = Math.min(1, this.flashI);
-    this.flashLight.intensity = this.flashI * 110;
+    this.flashLight.intensity = this.flashI * 55; // halved: the paper washed out at the peak
   }
 
   dispose(): void {

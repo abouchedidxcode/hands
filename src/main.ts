@@ -94,7 +94,7 @@ const commander = new Commander(stage, ground, {
     audio.play('smite', { pan: pan(x) });
     audio.setCharge(0);
     stage.shake(1.0);
-    stage.flash(0.16);
+    stage.flash(0.09);
     recorder.banner(kills > 0 ? `SMITE ×${kills}` : 'SMITE', '#fff3a8');
     if (kills >= 12) hud.toast(`SMITE ×${kills}`, '#fff3a8', false, 'smite', 0.2);
     else if (kills > 0) hud.toast(`×${kills}`, '#fff3a8', true, 'smite', 0.2);
@@ -315,6 +315,7 @@ function setState(s: State) {
 }
 
 function startLevel(level: Level) {
+  tutorial.stop(hud);
   currentLevel = level;
   loadWorld(level, false);
   endTimer = -1;
@@ -668,7 +669,7 @@ function tick(now: number) {
       arrows.begin(); arrows.end();
     }
     if (state === 'play' || state === 'pause' || state === 'countdown') {
-      hud.update(sim.strength(), sim.time, sim.manaOf[me] ?? 0, true);
+      hud.update(sim.strength(), sim.time, sim.manaOf[me] ?? 0, true, sim.rallyActive(me) ? (sim.rallyUntilOf[me] - sim.time) : 0);
       // music intensity follows the battle
       const s = sim.strength();
       const total = s.reduce((a, b) => a + b, 0) || 1;
