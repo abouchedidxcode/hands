@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <title>GODHAND — command armies with your bare hands</title>
+    <meta name="description" content="A webcam hand-tracked real-time war game. Pinch your castles, fling your armies, smite your enemies with lightning. No mouse. No keyboard. Just your hands." />
+    <meta property="og:title" content="GODHAND" />
+    <meta property="og:description" content="Command armies with your bare hands. Webcam hand-tracked real-time strategy." />
+    <meta name="theme-color" content="#c9b089" />
+    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E%E2%9C%8B%3C/text%3E%3C/svg%3E" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Rubik:wght@500;700;900&family=Bungee&family=Cinzel:wght@700;900&family=Cinzel+Decorative:wght@700;900&family=IM+Fell+English:ital@0;1&display=swap" rel="stylesheet" />
+    <link rel="stylesheet" href="/src/style.css" />
+  </head>
+  <body>
+    <canvas id="game"></canvas>
+    <div id="ui">
+      <div id="hud" class="hidden"></div>
+      <div id="screen"></div>
+      <div id="toasts"></div>
+      <div id="coach" class="hidden"></div>
+      <div id="cursors"></div>
+      <div id="pip" class="hidden">
+        <video id="cam" playsinline muted autoplay></video>
+        <canvas id="pipSkel"></canvas>
+        <div id="pipStatus"></div>
+        <div class="pip-tag">HAND CAM</div>
+        <div id="pipHint" aria-hidden="true"><div class="ghost">✋</div><div class="msg"></div></div>
+      </div>
+    </div>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>

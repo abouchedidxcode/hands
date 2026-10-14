@@ -1,0 +1,26 @@
+{
+  "name": "godhand",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "GODHAND — a hand-tracked real-time war game. Pinch your castles, fling your armies, smite your enemies.",
+  "scripts": {
+    "dev": "vite --host",
+    "build": "tsc --noEmit && vite build",
+    "typecheck": "tsc --noEmit",
+    "preview": "vite preview --host",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@mediapipe/tasks-vision": "^1.1.0",
+    "three": "^0.186.1",
+    "trystero": "^0.26.0"
+  },
+  "devDependencies": {
+    "@types/three": "^0.186.0",
+    "playwright": "^1.64.0",
+    "typescript": "^7.0.2",
+    "vite": "^8.3.4",
+    "vitest": "^5.0.4"
+  }
+}
