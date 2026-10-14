@@ -10,11 +10,11 @@ const dots = (cls: string, n: number) => Array.from({ length: n }, (_, i) => `<i
 const DEMOS = {
   pinch: `<div class="demo d-pinch">
       <div class="base me"></div><div class="base tgt"></div>
-      <div class="trail"></div>${dots('sol', 5)}
+      <svg viewBox="0 0 100 100" preserveAspectRatio="none"><path class="tr" d="M16 62 L80 36" pathLength="100"/></svg>${dots('sol', 5)}
       <div class="hand">🤏</div></div>`,
   sweep: `<div class="demo d-sweep">
       <div class="base me a"></div><div class="base me b"></div><div class="base tgt"></div>
-      <div class="trail t1"></div><div class="trail t2"></div>
+      <svg viewBox="0 0 100 100" preserveAspectRatio="none"><path class="tr" d="M14 70 L42 34 L84 58" pathLength="100"/></svg>
       <div class="hand">🤏</div></div>`,
   smite: `<div class="demo d-smite">
       ${dots('foe', 6)}
@@ -28,8 +28,7 @@ const DEMOS = {
       <div class="clap">👏</div><div class="ring"></div>
       ${dots('sol', 4)}</div>`,
   two: `<div class="demo d-two">
-      <div class="hand l">🤏</div><div class="hand r">🤏</div>
-      <div class="trail l"></div><div class="trail r"></div></div>`,
+      <div class="hand l">🤏</div><div class="hand r">🤏</div></div>`,
 };
 
 const hint = (demo: string, title: string, text: string, cls = '') =>
