@@ -28,7 +28,8 @@ export interface OneEuroParams {
  * minCutoff 1.1 Hz gives alpha ≈ 0.19 which removes it, while a 1 screen/s
  * swipe pushes the cutoff to ~6.6 Hz (≈ 25 ms lag).
  */
-export const CURSOR_FILTER: OneEuroParams = { minCutoff: 1.1, beta: 5.5, dCutoff: 1.2 };
+// tuned for snappiness: little lag on fast moves, light smoothing when still
+export const CURSOR_FILTER: OneEuroParams = { minCutoff: 1.8, beta: 9, dCutoff: 1.2 };
 
 /** Lighter filtering for the landmark *shape* (purely visual). */
 export const SHAPE_FILTER: OneEuroParams = { minCutoff: 2.2, beta: 2.5, dCutoff: 1.2 };

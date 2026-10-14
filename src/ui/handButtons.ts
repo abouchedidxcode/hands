@@ -11,7 +11,7 @@ interface CState { x: number; y: number; vis: boolean }
 
 /**
  * Hand-operated buttons: any element with [data-hb] can be activated by hovering a hand cursor
- * over it (a ring fills) or by pinching while hovering. Mouse clicks work too.
+ * over it (a ring fills) or by closing your fist (grab) while hovering. Mouse clicks work too.
  *
  * Each hand targets at most one button (the nearest one it is inside of), so padded hit areas of
  * neighbouring buttons never fill together. The drawn cursor is gently pulled ("magnetic") toward
@@ -82,7 +82,7 @@ export class HandButtons {
         if (target[i] !== k) return;
         hovered = true;
         // with a real mouse the DOM click already fires; don't double-trigger from the fake pinch
-        if (h.pinchStart && frame.source !== 'mouse') pinched = true;
+        if (h.grabStart && frame.source !== 'mouse') pinched = true;
       });
       const locked = el.classList.contains('locked');
       if (hovered && !st.hovered && !locked) this.onHover?.();
@@ -123,7 +123,7 @@ export class HandButtons {
       else { cs.x += (tx - cs.x) * ease; cs.y += (ty - cs.y) * ease; }
       c.style.transform = `translate(${cs.x.toFixed(1)}px, ${cs.y.toFixed(1)}px)`;
       c.style.setProperty('--p', p.toFixed(3));
-      c.classList.toggle('pinch', h.pinch);
+      c.classList.toggle('pinch', h.grab);
       c.classList.toggle('over', over);
       c.classList.toggle('nope', locked);
     });

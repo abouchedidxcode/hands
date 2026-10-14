@@ -29,7 +29,7 @@ export class Hud {
       </div>
       <div class="rally-chip"><span class="g">👏</span><b>RALLY</b><span class="secs"></span></div>
       <div class="mana">
-        <div class="pw smite"><div class="ring"><span>✊</span></div><div class="pl"><b>SMITE</b><i>${MANA.smiteCost}</i></div><div class="cnt"></div></div>
+        <div class="pw smite"><div class="ring"><span>🖕</span></div><div class="pl"><b>SMITE</b><i>${MANA.smiteCost}</i></div><div class="cnt"></div></div>
         <div class="mcol">
           <div class="bar"><div class="fill"></div></div>
           <div class="label"></div>
@@ -45,7 +45,7 @@ export class Hud {
     const bar = root.querySelector('.mana .bar')!;
     // cost markers: every smite charge (white) + the rally cost (gold)
     const ticks: [number, string, string][] = [];
-    for (let c = MANA.smiteCost; c < MANA.max; c += MANA.smiteCost) ticks.push([c, 'tick', '✊']);
+    for (let c = MANA.smiteCost; c < MANA.max; c += MANA.smiteCost) ticks.push([c, 'tick', '🖕']);
     ticks.push([MANA.rallyCost, 'tick rally', '👏']);
     for (const [c, cls, icon] of ticks) {
       const t = document.createElement('div');
@@ -116,8 +116,8 @@ export class Hud {
       const gained = this.lastKey !== '' && (ready > Number(this.lastKey.split('|')[0]) || (canRally && this.lastKey.endsWith('false')));
       this.lastKey = key;
       this.manaLabel.innerHTML = ready === 0
-        ? `MANA CHARGING · <b>✊</b> ${MANA.smiteCost} · <b>👏</b> ${MANA.rallyCost}`
-        : `<b>✊ fist → 🖐 open</b> to SMITE${canRally ? ' · <b class="gold">👏 clap</b> to RALLY' : ''}`;
+        ? `MANA CHARGING · <b>🖕</b> ${MANA.smiteCost} · <b>👏</b> ${MANA.rallyCost}`
+        : `<b>🖕 middle finger</b> to SMITE${canRally ? ' · <b class="gold">👏 clap</b> to RALLY' : ''}`;
       if (gained) { this.mana.classList.remove('gain'); void this.mana.offsetWidth; this.mana.classList.add('gain'); }
     }
   }

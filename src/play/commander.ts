@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { FACTION_COLORS, MANA, PLAYER } from '../config';
+import { FACTION_COLORS, PLAYER } from '../config';
 import type { Sim } from '../game/sim';
 import type { Base } from '../game/types';
 import type { HandState, InputFrame } from '../input/types';
@@ -8,46 +8,54 @@ import type { Highlight } from '../render/bases';
 import type { HandMode } from '../render/handViz';
 import type { Stage } from '../render/scene';
 
+/** How forgiving the targeting is (world units beyond a base's radius). */
+const GRAB_PAD = 2.6;     // closing the fist picks up the nearest own base this close
+const SWEEP_PAD = 1.5;    // while carrying, passing this close adds another own base
+const DROP_PAD = 2.4;     // opening the hand drops on the nearest base this close
+const HOVER_PAD = 1.8;
+/** Hold the middle finger this long before the bolt falls (filters passing poses). */
+const MIDDLE_HOLD = 0.16;
+
 interface Ctl {
   dragging: boolean;
   sel: number[];
   hover: Base | null;
   target: Base | null;
-  chargeT: number;
-  armed: boolean;
+  midT: number;
+  fired: boolean;
   denied: boolean;
-  swatT: number;
   mode: HandMode;
   g: THREE.Vector3;
-  gPrev: THREE.Vector3;
   hasG: boolean;
-  hadG: boolean;
 }
 
 export interface CommanderEvents {
-  pinch(hand: number): void;
+  grab(hand: number): void;
   select(hand: number, base: Base): void;
   send(hand: number, sources: number[], target: Base, count: number): void;
   cancel(hand: number): void;
-  armed(hand: number): void;
   smite(hand: number, x: number, z: number, kills: number): void;
   denied(hand: number, reason: string): void;
-  swat(hand: number, x: number, z: number, kills: number): void;
   rally(ok: boolean): void;
 }
 
 const newCtl = (): Ctl => ({
-  dragging: false, sel: [], hover: null, target: null, chargeT: 0, armed: false, denied: false,
-  swatT: 0, mode: 'idle', g: new THREE.Vector3(), gPrev: new THREE.Vector3(), hasG: false, hadG: false,
+  dragging: false, sel: [], hover: null, target: null, midT: 0, fired: false, denied: false,
+  mode: 'idle', g: new THREE.Vector3(), hasG: false,
 });
 
-/** Turns hand gestures into battlefield commands for the player. */
+/**
+ * Turns hand gestures into battlefield commands:
+ *  - close your fist near one of your bases to grab its army, sweep over more of your bases
+ *    to add them, open your hand over a target to send them all;
+ *  - raise your middle finger anywhere: lightning strikes under the fingertip;
+ *  - clap both hands: rally.
+ */
 export class Commander {
   ctl: Ctl[] = [newCtl(), newCtl()];
   highlight: Highlight = { hover: new Set(), selected: new Set(), target: new Set() };
   /** Disable powers (tutorial gating). */
   allowSmite = true;
-  allowSwat = true;
   allowSend = true;
   allowRally = true;
   /** Which faction these hands command (online guest = 1). */
@@ -57,11 +65,13 @@ export class Commander {
   private clapCooldown = 0;
   private from = new THREE.Vector3();
   private to = new THREE.Vector3();
+  private tip = new THREE.Vector3();
 
   constructor(private stage: Stage, private heightAt: (x: number, z: number) => number, private ev: CommanderEvents) {}
 
   get modes(): HandMode[] { return this.ctl.map((c) => c.mode); }
-  get charges(): number[] { return this.ctl.map((c) => Math.min(1, c.chargeT / MANA.smiteChargeTime)); }
+  /** 0..1 smite aim progress per hand (for the charge glow). */
+  get charges(): number[] { return this.ctl.map((c) => (c.fired ? 1 : Math.min(1, c.midT / MIDDLE_HOLD))); }
 
   reset() {
     this.ctl = [newCtl(), newCtl()];
@@ -74,6 +84,17 @@ export class Commander {
     frame.hands.forEach((h, i) => this.updateHand(i, h, sim, dt, t, arrows));
     arrows.end();
     this.detectClap(frame, sim, dt);
+  }
+
+  /** Nearest base (by edge distance) within `pad`, optionally only those passing `ok`. */
+  private nearest(sim: Sim, x: number, z: number, pad: number, ok?: (b: Base) => boolean): Base | null {
+    let best: Base | null = null, bd = Infinity;
+    for (const b of sim.bases) {
+      if (ok && !ok(b)) continue;
+      const d = Math.hypot(b.x - x, b.z - z) - b.radius;
+      if (d < pad && d < bd) { bd = d; best = b; }
+    }
+    return best;
   }
 
   /** Two open hands slammed together → RALLY. */
@@ -93,7 +114,7 @@ export class Commander {
       this.clapSpeed = Math.max(closing, this.clapSpeed - dt * 6);
     }
     this.clapPrevD = d;
-    const busy = a.pinch || b.pinch || a.fist || b.fist || this.ctl.some((c) => c.dragging);
+    const busy = a.grab || b.grab || a.middle || b.middle || this.ctl.some((c) => c.dragging);
     if (!busy && this.allowRally && this.clapCooldown <= 0 && d < 0.17 && this.clapSpeed > 0.9) {
       this.clapCooldown = 1.2;
       this.clapSpeed = 0;
@@ -103,77 +124,58 @@ export class Commander {
 
   private updateHand(i: number, h: HandState, sim: Sim, dt: number, t: number, arrows: DragArrows) {
     const c = this.ctl[i];
-    c.hadG = c.hasG;
-    c.gPrev.copy(c.g);
+    const me = this.faction;
     c.hasG = h.present && !!this.stage.screenToGround(h.x, h.y, 0.25, c.g);
     if (!h.present || !c.hasG) {
       if (c.dragging && c.sel.length) this.ev.cancel(i);
-      c.dragging = false; c.sel = []; c.chargeT = 0; c.armed = false; c.denied = false; c.mode = 'idle';
+      c.dragging = false; c.sel = []; c.midT = 0; c.fired = false; c.denied = false; c.mode = 'idle';
       c.hover = null; c.target = null;
       return;
     }
-    if (sim.over) { c.mode = 'hover'; c.dragging = false; c.sel = []; c.chargeT = 0; c.armed = false; return; }
+    if (sim.over) { c.mode = 'hover'; c.dragging = false; c.sel = []; c.midT = 0; return; }
 
-    c.hover = sim.baseAt(c.g.x, c.g.z, 0.95);
-    if (c.hover) this.highlight.hover.add(c.hover.id);
-
-    // ---------------------------------------------------------------- smite (fist → open)
-    if (h.fist && this.allowSmite) {
-      if (c.dragging) { if (c.sel.length) this.ev.cancel(i); c.dragging = false; c.sel = []; }
-      if (!sim.canSmite(this.faction)) {
-        if (!c.denied) { c.denied = true; this.ev.denied(i, 'mana'); }
-        c.chargeT = 0;
-        c.mode = 'hover';
-      } else {
-        c.chargeT += dt;
-        if (!c.armed && c.chargeT >= MANA.smiteChargeTime) { c.armed = true; this.ev.armed(i); }
-        c.mode = c.armed ? 'armed' : 'charge';
+    // ---------------------------------------------------------------- smite: middle finger
+    if (h.middle && this.allowSmite && !c.dragging) {
+      c.midT += dt;
+      c.mode = 'armed';
+      // aim = the ground under the middle fingertip
+      const L = h.landmarks;
+      const aim = L.length === 21 ? this.stage.screenToGround(L[12].x, L[12].y, 0.25, this.tip) : null;
+      const p = aim ?? c.g;
+      if (!c.fired && c.midT >= MIDDLE_HOLD) {
+        c.fired = true;
+        if (!sim.canSmite(me)) {
+          if (!c.denied) { c.denied = true; this.ev.denied(i, 'mana'); }
+        } else {
+          const kills = sim.smite(p.x, p.z, me);
+          if (kills >= 0) this.ev.smite(i, p.x, p.z, kills);
+        }
       }
+      c.hover = null;
       return;
     }
-    c.denied = false;
-    if (c.armed) {
-      // hand opened → unleash
-      const kills = sim.smite(c.g.x, c.g.z, this.faction);
-      if (kills >= 0) this.ev.smite(i, c.g.x, c.g.z, kills);
-      c.armed = false;
-      c.chargeT = 0;
-      c.mode = 'idle';
-    }
-    c.chargeT = 0;
+    c.midT = 0; c.fired = false; c.denied = false;
 
-    // ---------------------------------------------------------------- swat (fast open palm)
-    c.swatT = Math.max(0, c.swatT - dt);
-    const speed = Math.hypot(h.vx, h.vy * 0.6);
-    if (this.allowSwat && h.open && !h.pinch && !c.dragging && speed > MANA.swatSpeed && c.hadG) {
-      let kills = 0;
-      const wv = this.to.subVectors(c.g, c.gPrev).multiplyScalar(1 / Math.max(dt, 1 / 120));
-      for (let s = 0; s <= 3; s++) {
-        this.from.lerpVectors(c.gPrev, c.g, s / 3);
-        kills += sim.swat(this.from.x, this.from.z, MANA.swatRadius, wv.x, wv.z, this.faction);
-      }
-      c.swatT = 0.25;
-      if (kills > 0) this.ev.swat(i, c.g.x, c.g.z, kills);
-    }
-
-    // ---------------------------------------------------------------- pinch-drag-release
-    if (h.pinchStart && this.allowSend) {
+    // ---------------------------------------------------------------- grab → carry → open to send
+    if (h.grabStart && this.allowSend) {
       c.dragging = true;
       c.sel = [];
-      this.ev.pinch(i);
-      if (c.hover && c.hover.owner === this.faction) { c.sel.push(c.hover.id); this.ev.select(i, c.hover); }
+      this.ev.grab(i);
+      const first = this.nearest(sim, c.g.x, c.g.z, GRAB_PAD, (b) => b.owner === me);
+      if (first) { c.sel.push(first.id); this.ev.select(i, first); }
     }
-    if (c.dragging && h.pinch) {
-      if (c.hover && c.hover.owner === this.faction && !c.sel.includes(c.hover.id)) {
-        c.sel.push(c.hover.id);
-        this.ev.select(i, c.hover);
-      }
-      const sources = c.sel.filter((id) => id !== c.hover?.id);
-      c.target = c.hover && sources.length ? c.hover : null;
+
+    if (c.dragging && h.grab) {
+      const pass = this.nearest(sim, c.g.x, c.g.z, SWEEP_PAD, (b) => b.owner === me);
+      if (pass && !c.sel.includes(pass.id)) { c.sel.push(pass.id); this.ev.select(i, pass); }
+      // where would the army go if the hand opened now?
+      const drop = this.nearest(sim, c.g.x, c.g.z, DROP_PAD);
+      const sources = c.sel.filter((id) => id !== drop?.id);
+      c.target = drop && sources.length ? drop : null;
+      c.hover = c.target;
       for (const id of c.sel) this.highlight.selected.add(id);
       if (c.target) this.highlight.target.add(c.target.id);
-      // arcs
-      const col = FACTION_COLORS[this.faction];
+      const col = FACTION_COLORS[me];
       for (const id of sources) {
         const b = sim.bases[id];
         this.from.set(b.x, this.heightAt(b.x, b.z) + 0.6, b.z);
@@ -182,20 +184,27 @@ export class Commander {
         arrows.arc(this.from, this.to, col, t, !!c.target);
       }
       c.mode = 'pinch';
-    } else if (c.dragging && (h.pinchEnd || !h.pinch)) {
-      const sources = c.sel.filter((id) => id !== c.hover?.id);
-      if (c.hover && sources.length) {
-        const n = sim.send(sources, c.hover.id, this.faction);
-        if (n > 0) this.ev.send(i, sources, c.hover, n);
+      return;
+    }
+
+    if (c.dragging) {
+      // hand opened (or the grab was lost): release on the snapped target
+      const drop = this.nearest(sim, c.g.x, c.g.z, DROP_PAD);
+      const sources = c.sel.filter((id) => id !== drop?.id);
+      if (drop && sources.length) {
+        const n = sim.send(sources, drop.id, me);
+        if (n > 0) this.ev.send(i, sources, drop, n);
         else this.ev.cancel(i);
       } else if (c.sel.length) this.ev.cancel(i);
       c.dragging = false;
       c.sel = [];
       c.target = null;
-      c.mode = 'hover';
-    } else {
-      c.mode = c.swatT > 0 ? 'swat' : 'hover';
     }
+
+    // ---------------------------------------------------------------- hover
+    c.hover = this.nearest(sim, c.g.x, c.g.z, HOVER_PAD, (b) => b.owner === me);
+    if (c.hover) this.highlight.hover.add(c.hover.id);
+    c.mode = 'hover';
   }
 }
 

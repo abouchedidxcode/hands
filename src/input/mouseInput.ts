@@ -1,9 +1,8 @@
 /**
  * Mouse fallback → a HandState for slot 0.
- *   left button      = pinch
- *   right button     = fist (context menu suppressed); releasing it yields an
- *                      'open' hand for ≥1 update (and ≥100 ms) so fist→open smites fire
- *   Shift held       = open palm (swat when moving fast)
+ *   left button      = grab (closed fist)
+ *   right button     = middle finger (smite under the cursor); context menu suppressed
+ *   Shift held       = open palm
  * Fake landmarks are generated around the cursor so the 3D hand still renders.
  */
 import type { Gesture, HandState } from './types';
@@ -106,28 +105,28 @@ export class MouseInput {
     }
 
     // Latches make sub-frame clicks visible for one sample.
-    const pinch = this.left || this.leftLatch;
-    const fist = !pinch && (this.right || this.rightLatch);
+    const grab = this.left || this.leftLatch;
+    const middle = !grab && (this.right || this.rightLatch);
     this.leftLatch = this.rightLatch = false;
     let open = false;
-    if (pinch) this.openFrames = 0; // a smite pulse doesn't survive a pinch
-    else if (!fist) {
+    if (grab) this.openFrames = 0;
+    else if (!middle) {
       if (this.openFrames > 0 || now < this.openUntil) { open = true; this.openFrames = 0; }
       else if (this.shift) open = true;
     }
-    const gesture: Gesture = pinch ? 'pinch' : fist ? 'fist' : open ? 'open' : 'none';
+    const gesture: Gesture = grab ? 'grab' : middle ? 'middle' : open ? 'open' : 'none';
 
     const k = dt > 0 ? 1 - Math.exp(-dt / POSE_TAU) : 1;
-    this.aPinch += k * ((pinch ? 1 : 0) - this.aPinch);
-    this.aFist += k * ((fist ? 1 : 0) - this.aFist);
+    this.aPinch += k * ((middle ? 1 : 0) - this.aPinch);
+    this.aFist += k * ((grab ? 1 : 0) - this.aFist);
     this.aOpen += k * ((open ? 1 : 0) - this.aOpen);
 
     const x = clamp01(this.x), y = clamp01(this.y);
     Object.assign(h, {
       present: true, handedness: 'Right',
       x, y, vx: this.vx, vy: this.vy,
-      pinch, pinchStrength: pinch ? 1 : this.aPinch,
-      fist, open, gesture,
+      grab, grabStrength: grab ? 1 : this.aFist,
+      middle, open, gesture,
       landmarks: screenHandLandmarks(x, y, this.pose(), { aspect: this.aspect, scale: MOUSE_PALM_SIZE }),
       palmSize: MOUSE_PALM_SIZE,
       lastSeen: now,
@@ -139,10 +138,11 @@ export class MouseInput {
     const base = POSES.relaxed.curl;
     const curl = base.map((c, i) => {
       let v = c + (POSES.fist.curl[i] - c) * this.aFist;
+      v += (POSES.middle.curl[i] - v) * this.aPinch; // aPinch tracks the middle-finger pose
       v += (POSES.open.curl[i] - v) * this.aOpen;
       return v;
     }) as HandPose['curl'];
-    return { curl, pinch: this.aPinch };
+    return { curl, pinch: 0 };
   }
 
   dispose(): void { for (const f of this.off) f(); this.off = []; }

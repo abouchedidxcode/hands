@@ -1,4 +1,5 @@
-export type Gesture = 'none' | 'open' | 'pinch' | 'fist' | 'point';
+/** grab = closed fist (select / carry armies); middle = middle finger raised (smite). */
+export type Gesture = 'none' | 'open' | 'grab' | 'middle' | 'point';
 
 /** x,y in 0..1 screen space (already mirrored + remapped), z = relative depth from MediaPipe. */
 export interface Landmark { x: number; y: number; z: number }
@@ -8,16 +9,18 @@ export interface HandState {
   present: boolean;
   /** As the user sees it (mirrored selfie view). */
   handedness: 'Left' | 'Right';
-  /** Cursor (thumb/index midpoint) in 0..1 screen space, smoothed. */
+  /** Cursor (palm centre: knuckle centroid) in 0..1 screen space, smoothed. */
   x: number; y: number;
   /** Cursor velocity, screen units per second. */
   vx: number; vy: number;
-  pinch: boolean;
-  /** True only on the frame the pinch began / ended. */
-  pinchStart: boolean; pinchEnd: boolean;
-  /** 0..1, 1 = fingertips touching. */
-  pinchStrength: number;
-  fist: boolean;
+  /** Closed fist (with hysteresis): the select / grab gesture. */
+  grab: boolean;
+  /** True only on the frame the grab began / ended. */
+  grabStart: boolean; grabEnd: boolean;
+  /** 0..1, how closed the hand is (1 = tight fist). */
+  grabStrength: number;
+  /** Middle finger raised, others curled: the smite gesture. */
+  middle: boolean;
   open: boolean;
   gesture: Gesture;
   /** 21 MediaPipe landmarks in the same space as x,y; [] when not present. */
@@ -38,8 +41,8 @@ export function emptyHand(slot: 0 | 1): HandState {
   return {
     slot, present: false, handedness: slot === 0 ? 'Right' : 'Left',
     x: 0.5, y: 0.5, vx: 0, vy: 0,
-    pinch: false, pinchStart: false, pinchEnd: false, pinchStrength: 0,
-    fist: false, open: false, gesture: 'none',
+    grab: false, grabStart: false, grabEnd: false, grabStrength: 0,
+    middle: false, open: false, gesture: 'none',
     landmarks: [], palmSize: 0, lastSeen: 0,
   };
 }

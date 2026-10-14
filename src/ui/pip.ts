@@ -59,7 +59,7 @@ export function drawPip(canvas: HTMLCanvasElement, frame: InputFrame, input: { v
     for (const p of L) { c.beginPath(); c.arc(px(p.x), py(p.y), 2.2 * k, 0, Math.PI * 2); c.fill(); }
     c.shadowBlur = 0;
     // gesture label
-    const label = hand.pinch ? 'PINCH' : hand.fist ? 'FIST' : hand.open ? 'OPEN' : hand.gesture.toUpperCase();
+    const label = hand.grab ? 'GRAB' : hand.middle ? 'SMITE' : hand.open ? 'OPEN' : hand.gesture.toUpperCase();
     c.font = `900 ${Math.round(11 * k)}px Cinzel, Georgia, serif`;
     c.textAlign = 'center';
     const lx = px(L[0].x), ly = py(L[0].y) + 18 * k;

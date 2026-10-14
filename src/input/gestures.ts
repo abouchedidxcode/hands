@@ -63,8 +63,8 @@ export interface MappingConfig {
 
 export const DEFAULT_MAPPING: MappingConfig = {
   mirror: true,
-  x0: 0.15, x1: 0.85,
-  y0: 0.10, y1: 0.80,
+  x0: 0.2, x1: 0.8,
+  y0: 0.16, y1: 0.76,
   flipHandedness: true,
 };
 
@@ -91,6 +91,11 @@ export interface GestureConfig {
   extendedRatio: number;
   /** Thumb tip → index MCP distance / palm above this = thumb extended. */
   thumbOutRatio: number;
+  /** Grab (fist) hysteresis on the mean finger curl ratio (wrist→tip / wrist→PIP). */
+  grabOnMean: number;
+  grabOffMean: number;
+  /** Middle-finger salute: middle ratio above this while the others are curled. */
+  middleExt: number;
   /** Gesture debounce: a new gesture must persist this long AND this many frames. */
   debounceMs: number;
   debounceFrames: number;
@@ -126,10 +131,13 @@ export const DEFAULT_GESTURE: GestureConfig = {
   pinchMinIndexCurl: 0.78,
   curledRatio: 1.0,
   extendedRatio: 1.2,
+  grabOnMean: 0.95,
+  grabOffMean: 1.16,
+  middleExt: 1.15,
   thumbOutRatio: 0.5,
-  debounceMs: 30,
+  debounceMs: 25,
   debounceFrames: 2,
-  noneDebounceMs: 90,
+  noneDebounceMs: 70,
   graceMs: 120,
   reacquireMs: 300,
   offsetFollowTau: 0.09,
@@ -183,10 +191,13 @@ export function userHandedness(label: 'Left' | 'Right', m: MappingConfig = DEFAU
   return label === 'Left' ? 'Right' : 'Left';
 }
 
-/** Raw cursor (thumb/index tip midpoint) in screen space, unclamped — used for slot matching. */
+/**
+ * Raw cursor (knuckle centroid, same anchor as HandProcessor) in screen space, unclamped —
+ * used for slot matching against the processors' filtered cursors.
+ */
 export function rawCursor(raw: RawLandmark[], m: MappingConfig = DEFAULT_MAPPING): { x: number; y: number } {
-  const a = raw[LM.THUMB_TIP], b = raw[LM.INDEX_TIP];
-  return toScreen((a.x + b.x) / 2, (a.y + b.y) / 2, m);
+  const a = raw[LM.INDEX_MCP], b = raw[LM.MIDDLE_MCP], c = raw[LM.RING_MCP], d = raw[LM.PINKY_MCP];
+  return toScreen((a.x + b.x + c.x + d.x) / 4, (a.y + b.y + c.y + d.y) / 4, m);
 }
 
 // ---------------------------------------------------------------------------
@@ -256,9 +267,34 @@ export function pinchStrengthOf(ratio: number, cfg: GestureConfig = DEFAULT_GEST
   return clamp01((cfg.pinchOpen - ratio) / (cfg.pinchOpen - cfg.pinchTouch));
 }
 
-/** ≥3 of 4 fingers curled, index not pointing (that's 'point'), not pinching. */
-export const isFist = (m: HandMetrics, pinch: boolean): boolean =>
-  !pinch && m.curledCount >= 3 && !m.extended[1];
+/** Middle finger up, index / ring / pinky curled (the smite salute). */
+export function isMiddle(m: HandMetrics, cfg: GestureConfig = DEFAULT_GESTURE): boolean {
+  return m.curl[1] > cfg.middleExt && m.curl[0] < cfg.curledRatio + 0.05 && m.curl[2] < cfg.curledRatio + 0.05 && m.curl[3] < cfg.curledRatio + 0.1;
+}
+
+/**
+ * Grab = closed fist, with hysteresis on the mean curl so a fist held loosely while moving
+ * doesn't flicker open. Never while giving the middle finger.
+ */
+export function nextGrab(active: boolean, m: HandMetrics, cfg: GestureConfig = DEFAULT_GESTURE): boolean {
+  if (isMiddle(m, cfg)) return false;
+  const mean = (m.curl[0] + m.curl[1] + m.curl[2] + m.curl[3]) / 4;
+  // A clearly straightened finger (e.g. pointing) ends / prevents a grab even though the
+  // other three curled fingers keep the mean low.
+  const maxCurl = Math.max(m.curl[0], m.curl[1], m.curl[2], m.curl[3]);
+  if (active) return mean < cfg.grabOffMean && m.extendedCount < 3 && maxCurl < cfg.extendedRatio + 0.05;
+  return mean < cfg.grabOnMean && m.curledCount >= 3 && maxCurl <= cfg.extendedRatio;
+}
+
+/** 0..1 how closed the hand is. */
+export function grabStrengthOf(m: HandMetrics, cfg: GestureConfig = DEFAULT_GESTURE): number {
+  const mean = (m.curl[0] + m.curl[1] + m.curl[2] + m.curl[3]) / 4;
+  return clamp01((1.45 - mean) / (1.45 - cfg.grabOnMean + 0.08));
+}
+
+/** Kept for tests / tools: legacy fist test (grab without hysteresis). */
+export const isFist = (m: HandMetrics, grab: boolean): boolean =>
+  grab || (m.curledCount >= 3 && !m.extended[1] && !m.extended[2]);
 export const isOpen = (m: HandMetrics): boolean => m.extendedCount >= 4;
 export function isPoint(m: HandMetrics, cfg: GestureConfig = DEFAULT_GESTURE): boolean {
   const othersDown = m.curl[1] < cfg.extendedRatio * 0.92 && m.curl[2] < cfg.extendedRatio * 0.92
@@ -266,10 +302,10 @@ export function isPoint(m: HandMetrics, cfg: GestureConfig = DEFAULT_GESTURE): b
   return m.extended[1] && othersDown;
 }
 
-/** Instantaneous (un-debounced) classification. Precedence: pinch > fist > open > point. */
-export function classifyGesture(m: HandMetrics, pinch: boolean, cfg: GestureConfig = DEFAULT_GESTURE): Gesture {
-  if (pinch) return 'pinch';
-  if (isFist(m, pinch)) return 'fist';
+/** Instantaneous (un-debounced) classification. Precedence: grab > middle > open > point. */
+export function classifyGesture(m: HandMetrics, grab: boolean, cfg: GestureConfig = DEFAULT_GESTURE): Gesture {
+  if (grab) return 'grab';
+  if (isMiddle(m, cfg)) return 'middle';
   if (isOpen(m)) return 'open';
   if (isPoint(m, cfg)) return 'point';
   return 'none';
@@ -289,9 +325,9 @@ export class GestureDebouncer {
   constructor(private cfg: GestureConfig = DEFAULT_GESTURE) {}
 
   push(g: Gesture, tMs: number): Gesture {
-    if (g === 'pinch') { this.stable = 'pinch'; this.cand = 'pinch'; this.candFrames = 0; return this.stable; }
-    if (this.stable === 'pinch') {
-      // Leaving a pinch: drop to 'none' immediately, then debounce toward g.
+    if (g === 'grab') { this.stable = 'grab'; this.cand = 'grab'; this.candFrames = 0; return this.stable; }
+    if (this.stable === 'grab') {
+      // Leaving a grab: drop to 'none' immediately, then debounce toward g.
       this.stable = 'none';
       this.cand = g; this.candSince = tMs; this.candFrames = 1;
       return this.stable;
@@ -312,26 +348,16 @@ export class GestureDebouncer {
 // ---------------------------------------------------------------------------
 
 /** HandState minus slot & edge flags (the InputManager owns those). */
-export type ProcessedHand = Omit<HandState, 'slot' | 'pinchStart' | 'pinchEnd'>;
+export type ProcessedHand = Omit<HandState, 'slot' | 'grabStart' | 'grabEnd'>;
+
+/** Knuckle centroid (index/middle/ring/pinky MCPs): barely moves when the hand opens or clenches. */
+const KNUCKLES = [LM.INDEX_MCP, LM.MIDDLE_MCP, LM.RING_MCP, LM.PINKY_MCP] as const;
 
 /**
  * Turns a stream of detections of ONE physical hand into a smoothed HandState.
  *
- * Pinch-jump mitigation: the cursor is the thumb/index tip midpoint, but that
- * midpoint moves as the fingers close (the index usually travels more than the
- * thumb), so a naive cursor dips at pinch start and jumps back on release —
- * exactly when the player is aiming. We express the midpoint as an offset in a
- * palm-attached frame (origin = index MCP, axes from wrist→middle MCP). The
- * palm frame follows the hand instantly; the *offset* follows the live
- * midpoint only while the fingers are not closing/opening. It freezes when
- *  - the pinch ratio is changing fast (fingers in motion), or
- *  - the ratio is in the closing band (< freezeBand), or
- *  - a pinch is active.
- * So during a pinch the cursor is rigidly attached to the palm at the point
- * the user was aiming before closing, release happens at that same point, and
- * after the fingers re-open the offset glides back (~90 ms) to the midpoint.
- * The landmark *shape* is re-anchored on the cursor, so the visual fingertips
- * still meet exactly where the cursor is.
+ * The cursor is the palm centre (knuckle centroid) rather than a fingertip: closing a fist to
+ * grab, or flipping the middle finger to smite, then never drags the cursor off the target.
  */
 export class HandProcessor {
   present = false;
@@ -341,8 +367,8 @@ export class HandProcessor {
   /** Unclamped filtered cursor (velocity is measured on this). */
   ux = 0.5; uy = 0.5;
   vx = 0; vy = 0;
-  pinch = false;
-  pinchStrength = 0;
+  grab = false;
+  grabStrength = 0;
   gesture: Gesture = 'none';
   palmSize = 0;
   lastSeen = -Infinity;
@@ -354,9 +380,6 @@ export class HandProcessor {
   private shapeFilters: OneEuroFilter[] = [];
   private palmFilter: OneEuroFilter;
   private debouncer: GestureDebouncer;
-  private offA = 0; private offB = 0;
-  private prevRatio = NaN;
-  private ratioRate = 0;
   private lastFrameT = 0;
   private handVote = 0;
   private lastMiss = -Infinity;
@@ -392,49 +415,19 @@ export class HandProcessor {
     // --- gestures ---------------------------------------------------------
     const mt = measureHand(lms, aspect, cfg);
     this.metrics = mt;
-    this.pinch = nextPinch(this.pinch && !fresh, mt, cfg);
-    this.pinchStrength = pinchStrengthOf(mt.pinchRatio, cfg);
-    this.gesture = this.debouncer.push(classifyGesture(mt, this.pinch, cfg), frameMs);
+    this.grab = nextGrab(this.grab && !fresh, mt, cfg);
+    this.grabStrength = grabStrengthOf(mt, cfg);
+    this.gesture = this.debouncer.push(classifyGesture(mt, this.grab, cfg), frameMs);
 
     // Handedness: MediaPipe's label flickers; keep a decaying score-weighted vote.
     const vote = (userHandedness(raw.label, m) === 'Right' ? 1 : -1) * Math.max(0.1, raw.score);
     this.handVote = fresh ? vote : this.handVote * 0.85 + vote * 0.15;
     this.handedness = this.handVote >= 0 ? 'Right' : 'Left';
 
-    // --- stabilised cursor (metric space, see class comment) --------------
-    const P = (i: number) => ({ x: lms[i].x * aspect, y: lms[i].y });
-    const O = P(LM.INDEX_MCP);
-    const w = P(LM.WRIST), mm = P(LM.MIDDLE_MCP);
-    let vxA = mm.x - w.x, vyA = mm.y - w.y;
-    let L = Math.hypot(vxA, vyA);
-    if (L < 1e-5) { vxA = 0; vyA = -1; L = 1e-5; } else { vxA /= L; vyA /= L; }
-    const uxA = -vyA, uyA = vxA; // perpendicular axis
-    const t4 = P(LM.THUMB_TIP), t8 = P(LM.INDEX_TIP);
-    const Mx = (t4.x + t8.x) / 2 - O.x, My = (t4.y + t8.y) / 2 - O.y;
-    const liveA = (Mx * uxA + My * uyA) / L;
-    const liveB = (Mx * vxA + My * vyA) / L;
-
-    if (fresh || !Number.isFinite(this.prevRatio)) {
-      this.offA = liveA; this.offB = liveB; this.ratioRate = 0;
-    } else {
-      const rr = Math.abs(mt.pinchRatio - this.prevRatio) / dt;
-      this.ratioRate += (1 - Math.exp(-dt / 0.05)) * (rr - this.ratioRate);
-      let freeze: number;
-      if (this.pinch) freeze = 1;
-      else {
-        const fBand = clamp01((cfg.freezeBand - mt.pinchRatio) / (cfg.freezeBand - cfg.pinchOn));
-        const fRate = clamp01((this.ratioRate - cfg.freezeRateLo) / (cfg.freezeRateHi - cfg.freezeRateLo));
-        freeze = Math.max(fBand, fRate);
-      }
-      const a = (1 - Math.exp(-dt / cfg.offsetFollowTau)) * (1 - freeze);
-      this.offA += a * (liveA - this.offA);
-      this.offB += a * (liveB - this.offB);
-    }
-    this.prevRatio = mt.pinchRatio;
-
-    const Sx = O.x + L * (this.offA * uxA + this.offB * vxA);
-    const Sy = O.y + L * (this.offA * uyA + this.offB * vyA);
-    const target = toScreen(Sx / aspect, Sy, m);
+    // --- cursor: knuckle centroid ----------------------------------------
+    let kx = 0, ky = 0;
+    for (const i of KNUCKLES) { kx += lms[i].x; ky += lms[i].y; }
+    const target = toScreen(kx / 4, ky / 4, m);
 
     // --- filter + velocity -------------------------------------------------
     const prevUx = this.ux, prevUy = this.uy;
@@ -449,11 +442,12 @@ export class HandProcessor {
     }
 
     // --- landmark shape, re-anchored on the cursor ------------------------
-    // Shape = landmarks relative to the tip midpoint, filtered separately, so
+    // Shape = landmarks relative to the knuckle centroid, filtered separately, so
     // translation only goes through the (tuned) cursor filter.
     const sl = mapLandmarks(lms, m);
-    const cx = (sl[LM.THUMB_TIP].x + sl[LM.INDEX_TIP].x) / 2;
-    const cy = (sl[LM.THUMB_TIP].y + sl[LM.INDEX_TIP].y) / 2;
+    let cx = 0, cy = 0;
+    for (const i of KNUCKLES) { cx += sl[i].x; cy += sl[i].y; }
+    cx /= 4; cy /= 4;
     const out: Landmark[] = new Array(sl.length);
     for (let i = 0; i < sl.length; i++) {
       const fx = this.shapeFilters[i * 3].filter(sl[i].x - cx, t);
@@ -471,14 +465,12 @@ export class HandProcessor {
 
   /**
    * No detection matched this hand this frame. Within the grace period the
-   * hand (and its pinch) stays alive at its last position; afterwards it is
+   * hand (and its grab) stays alive at its last position; afterwards it is
    * dropped. Returns true while still present.
    */
   miss(nowMs: number): boolean {
     if (!this.present) return false;
     if (nowMs - this.lastSeen <= this.cfg.graceMs) {
-      // Bleed velocity (time-based, independent of call rate) so a dropout
-      // mid-swipe doesn't leave a frozen palm reporting a huge speed.
       const dt = Math.max(0, nowMs - Math.max(this.lastSeen, this.lastMiss));
       this.lastMiss = nowMs;
       const k = Math.exp(-dt / 60);
@@ -491,8 +483,8 @@ export class HandProcessor {
 
   reset(): void {
     this.present = false;
-    this.pinch = false;
-    this.pinchStrength = 0;
+    this.grab = false;
+    this.grabStrength = 0;
     this.gesture = 'none';
     this.vx = 0; this.vy = 0;
     this.landmarks = [];
@@ -506,9 +498,7 @@ export class HandProcessor {
     this.palmFilter.reset();
     for (const f of this.shapeFilters) f.reset();
     this.debouncer.reset();
-    this.prevRatio = NaN;
-    this.ratioRate = 0;
-    this.pinch = false;
+    this.grab = false;
   }
 
   /** Snapshot (edge flags are added by the InputManager). */
@@ -517,8 +507,8 @@ export class HandProcessor {
       present: this.present,
       handedness: this.handedness,
       x: this.x, y: this.y, vx: this.vx, vy: this.vy,
-      pinch: this.pinch, pinchStrength: this.present ? this.pinchStrength : 0,
-      fist: this.gesture === 'fist', open: this.gesture === 'open',
+      grab: this.grab, grabStrength: this.present ? this.grabStrength : 0,
+      middle: this.gesture === 'middle', open: this.gesture === 'open',
       gesture: this.present ? this.gesture : 'none',
       landmarks: this.landmarks,
       palmSize: this.palmSize,
