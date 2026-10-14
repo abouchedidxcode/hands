@@ -44,9 +44,11 @@ export class NetSession {
       heard();
       const s = d as { v: number; seed: number };
       if (this.host || s.v !== PROTO) return;
+      // a new seed means the host started a rematch, even if our own 'rematch' bookkeeping hasn't caught up yet
+      const fresh = !this.started || s.seed !== this.seed;
       this.seed = s.seed;
       ch.send('ready', { v: PROTO }, this.peer);
-      if (!this.started) { this.started = true; this.onStart?.(this.seed); }
+      if (fresh) { this.started = true; this.onStart?.(this.seed); }
     });
     ch.on('ready', () => {
       heard();
@@ -59,7 +61,8 @@ export class NetSession {
     ch.on('snap', (d) => {
       heard();
       if (this.host) return;
-      const s = decodeSnapshot(d instanceof ArrayBuffer ? d : (d as Uint8Array).buffer as ArrayBuffer);
+      const u = d as Uint8Array;
+      const s = decodeSnapshot(d instanceof ArrayBuffer ? d : u.buffer.slice(u.byteOffset, u.byteOffset + u.byteLength) as ArrayBuffer);
       if (s) this.onSnapshot?.(s);
     });
     ch.on('ev', (d) => { heard(); if (!this.host) this.onEvents?.(d as GameEvent[]); });

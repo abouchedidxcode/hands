@@ -72,13 +72,15 @@ export class Tutorial {
     // swat step: skip if enemy has had no troops in the field for a long time
     // optional steps (swat / clap) auto-skip after a while so nobody gets stuck
     const skipAfter: Record<number, number> = { 4: 40, 6: 25, 7: 20 };
+    let skip = false;
     if (skipAfter[this.i]) {
       this.hold += dt;
-      if (this.hold > skipAfter[this.i]) this.advance(sim, c, hud);
+      skip = this.hold > skipAfter[this.i];
     }
-    if (s.done(this.counters, sim, handPresent)) this.advance(sim, c, hud);
-    // keep neutrals near the player cheap during the guided part
-    if (this.i <= 3) for (const b of sim.bases) if (b.owner !== PLAYER && b.owner !== -1) b.troops = Math.min(b.troops, 14);
+    // at most one step per frame: advancing twice would skip the next step's enter() (e.g. never re-enable smite)
+    if (skip || s.done(this.counters, sim, handPresent)) this.advance(sim, c, hud);
+    // while the AI sleeps (guided part), keep the enemy capital out of reach but not overwhelming
+    if (this.i <= 4) for (const b of sim.bases) if (b.owner !== PLAYER && b.owner !== -1) b.troops = Math.min(Math.max(b.troops, 22), 30);
   }
 
   private advance(sim: Sim, c: Commander, hud: Hud) {

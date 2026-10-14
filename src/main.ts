@@ -226,7 +226,7 @@ function setState(s: State) {
       screenEl.innerHTML = onlineScreens.searching('FINDING AN OPPONENT');
       setTimeout(() => {
         const tag = screenEl.querySelector('.tagline');
-        if (state === 'searching' && tag) tag.textContent = 'Few gods online right now. Keep waiting, or cancel and send a friend a private link.';
+        if (state === 'searching' && matchmaker.status === 'searching' && tag) tag.textContent = 'Few gods online right now. Keep waiting, or cancel and send a friend a private link.';
       }, 25000);
       $('b-cancel').onclick = () => { matchmaker.cancel(); setState('online'); };
       break;
@@ -269,7 +269,8 @@ function setState(s: State) {
       screenEl.innerHTML = screens.pause();
       buttons.hold(1.0);
       $('b-resume').onclick = () => setState('play');
-      $('b-quit').onclick = () => { tutorial.stop(hud); recorder.stop(true); setState('menu'); };
+      $('b-quit').onclick = () => { tutorial.stop(hud); recorder.stop(true); if (online) leaveOnline(); else setState('menu'); };
+      if (online) { const h = screenEl.querySelector('.tagline'); if (h) h.textContent = 'The duel goes on without you! Show your hand to fight, or forfeit.'; }
       break;
     case 'results': {
       if (online) { showOnlineResults(); break; }
@@ -357,9 +358,9 @@ function onMatchFound(m: Match) {
   net.onLeft = () => {
     hud.toast('OPPONENT LEFT', '#ff8095', false, 'left', 0);
     if (state === 'play' || state === 'countdown') {
-      if (world) { world.sim.over = true; world.sim.winner = me; }
-      endReason = 'opponent left';
-      endTimer = 0.8;
+      // don't overwrite a result that was already decided (e.g. the winner closed the tab at VICTORY)
+      if (world && !world.sim.over) { world.sim.over = true; world.sim.winner = me; endReason = 'opponent left'; }
+      if (endTimer < 0) endTimer = 0.8;
     } else if (state === 'results') {
       const b = document.getElementById('b-rematch');
       b?.classList.add('locked');
@@ -631,7 +632,7 @@ function tick(now: number) {
       break;
     }
     case 'play':
-      if (frame.source === 'camera' && !anyHand && endTimer < 0 && !online) {
+      if (frame.source === 'camera' && !anyHand && endTimer < 0) {
         noHandT += rawDt;
         if (noHandT > 1.6) { noHandT = 0; setState('pause'); }
       } else noHandT = 0;
@@ -647,7 +648,8 @@ function tick(now: number) {
   const dt = rawDt * timeScale;
   if (world) {
     const { sim, ais } = world;
-    const running = world.attract ? state !== 'play' : state === 'play';
+    // online duels never pause: the pause screen is just an overlay with a forfeit button
+    const running = world.attract ? state !== 'play' : state === 'play' || (!!online && state === 'pause');
     if (running) {
       if (state === 'play') {
         commander.update(frame, sim, rawDt, stage.t, arrows);
@@ -686,6 +688,7 @@ function tick(now: number) {
         }
       }
     }
+    if (state === 'play' && sim instanceof GuestSim && sim.stalled) hud.toast('WAITING FOR OPPONENT…', '#ffd166', true, 'stall', 3);
     if (state === 'play') {
       const ch = commander.charges;
       const charge = Math.max(ch[0], ch[1]);

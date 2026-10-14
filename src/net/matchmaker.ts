@@ -25,6 +25,8 @@ export class Matchmaker {
   private matchCh: Channel | null = null;
   private pending: string | null = null;
   private pendingTimer = 0;
+  private seekTimer = 0;
+  private connectTimer = 0;
   private cancelled = false;
 
   constructor(private onFound: (m: Match) => void) {}
@@ -61,7 +63,7 @@ export class Matchmaker {
       this.enterMatch(inv.room, false, inv.seed);
     });
     // nudge periodically in case a join was missed
-    const iv = window.setInterval(() => { if (this.status !== 'searching') window.clearInterval(iv); else seekAll(); }, 3000);
+    const iv = (this.seekTimer = window.setInterval(() => { if (this.status !== 'searching') window.clearInterval(iv); else seekAll(); }, 3000));
   }
 
   /** Join (or create) a private room by code. Smaller peer id hosts. */
@@ -84,9 +86,9 @@ export class Matchmaker {
     this.lobby?.leave();
     this.lobby = null;
     const ch = (this.matchCh = new Channel('m-' + room));
-    const timeout = window.setTimeout(() => {
+    const timeout = (this.connectTimer = window.setTimeout(() => {
       if (this.status === 'connecting' && !this.cancelled) { ch.leave(); this.matchCh = null; this.quick(); }
-    }, 15000);
+    }, 15000));
     ch.onJoin = (p) => {
       if (this.status !== 'connecting') return;
       window.clearTimeout(timeout);
@@ -109,6 +111,9 @@ export class Matchmaker {
 
   private reset() {
     window.clearTimeout(this.pendingTimer);
+    // stale timers from an earlier search must not tear down (or re-seek on) a newer one
+    window.clearTimeout(this.connectTimer);
+    window.clearInterval(this.seekTimer);
     this.pending = null;
     this.lobby?.leave();
     this.lobby = null;

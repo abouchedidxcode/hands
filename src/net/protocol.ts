@@ -70,6 +70,7 @@ export function decodeSnapshot(buf: ArrayBuffer): Snapshot | null {
   const rallyUntil: [number, number] = [v.getFloat32(o, true), v.getFloat32(o + 4, true)]; o += 8;
   const nb = v.getUint8(o); o += 1;
   const nu = v.getUint16(o, true); o += 2;
+  if (v.byteLength < HEADER + nb * PER_BASE + nu * PER_UNIT) return null; // truncated / corrupt
   const bases: Snapshot['bases'] = [];
   for (let i = 0; i < nb; i++) {
     const owner = v.getInt8(o); o += 1;

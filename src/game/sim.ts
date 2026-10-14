@@ -63,6 +63,7 @@ export class Sim {
   /** Send half the garrison of each owned base in `from` to base `to`. Returns troops sent. */
   send(from: number[], to: number, faction: number): number {
     let total = 0;
+    if (!this.bases[to]) return 0; // invalid target (e.g. a bad network command) would crash spawnUnit every frame
     for (const id of from) {
       const b = this.bases[id];
       if (!b || b.owner !== faction || id === to || b.troops < 2) continue;

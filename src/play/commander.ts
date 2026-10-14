@@ -112,7 +112,7 @@ export class Commander {
       c.hover = null; c.target = null;
       return;
     }
-    if (sim.over) { c.mode = 'hover'; c.dragging = false; c.sel = []; return; }
+    if (sim.over) { c.mode = 'hover'; c.dragging = false; c.sel = []; c.chargeT = 0; c.armed = false; return; }
 
     c.hover = sim.baseAt(c.g.x, c.g.z, 0.95);
     if (c.hover) this.highlight.hover.add(c.hover.id);

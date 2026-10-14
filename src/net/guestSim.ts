@@ -46,8 +46,12 @@ export class GuestSim extends Sim {
   }
 
   /** Advance only the cosmetic state between snapshots. */
+  /** performance.now() of the last snapshot; units freeze if the host goes quiet. */
+  lastSnap = 0;
+  get stalled() { return this.gotFirst && performance.now() - this.lastSnap > 1200; }
+
   override step(dt: number) {
-    if (!this.gotFirst) return;
+    if (!this.gotFirst || this.stalled) return;
     this.time += dt;
     for (const u of this.units) {
       u.x += u.dx * u.speed * dt;
@@ -57,6 +61,7 @@ export class GuestSim extends Sim {
 
   apply(s: Snapshot) {
     this.gotFirst = true;
+    this.lastSnap = performance.now();
     this.time = s.time + this.latency;
     this.over = s.over;
     this.winner = s.winner;
