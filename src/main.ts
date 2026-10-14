@@ -87,6 +87,16 @@ const commander = new Commander(stage, ground, {
     if (kills >= 12) hud.toast(`SMITE ×${kills}`, '#fff3a8', false, 'smite', 0.2);
     else if (kills > 0) hud.toast(`×${kills}`, '#fff3a8', true, 'smite', 0.2);
   },
+  rally: (ok) => {
+    if (!ok) { audio.play('denied'); hud.toast('RALLY NEEDS 50 MANA', '#9fb4ff', true, 'mana', 1.5); return; }
+    tutorial.counters.rallies++;
+    audio.play('go');
+    audio.play('capture', { pitch: 0.75 });
+    stage.shake(0.35);
+    hud.toast('RALLY!', '#ffd166', false, 'rally', 0.5);
+    recorder.banner('RALLY!', '#ffd166');
+    if (world) for (const b of world.sim.bases) if (b.owner === PLAYER) fx.shockwave(at(b.x, b.z, 0.1).clone(), '#ffd166', 3.2);
+  },
   denied: () => { audio.play('denied'); hud.toast('NOT ENOUGH MANA', '#9fb4ff', true, 'mana', 2); },
   swat: (_i, x, _z, kills) => {
     tutorial.counters.swatKills += kills;
@@ -434,6 +444,13 @@ function tick(now: number) {
       const total = s.reduce((a, b) => a + b, 0) || 1;
       audio.setIntensity(state === 'play' ? 0.55 + Math.min(0.45, sim.units.length / 300) : 0.3);
       void total;
+    }
+    if (state === 'play' && sim.rallyActive()) {
+      // golden sparks trail the rallied armies
+      for (let k = 0; k < 3 && sim.units.length; k++) {
+        const u = sim.units[(Math.random() * sim.units.length) | 0];
+        if (u.faction === PLAYER) fx.sparks(at(u.x, u.z, 0.25), '#ffd166', 2);
+      }
     }
     if (state === 'play') {
       const ch = commander.charges;

@@ -33,6 +33,7 @@ export interface CommanderEvents {
   smite(hand: number, x: number, z: number, kills: number): void;
   denied(hand: number, reason: string): void;
   swat(hand: number, x: number, z: number, kills: number): void;
+  rally(ok: boolean): void;
 }
 
 const newCtl = (): Ctl => ({
@@ -48,6 +49,10 @@ export class Commander {
   allowSmite = true;
   allowSwat = true;
   allowSend = true;
+  allowRally = true;
+  private clapPrevD = -1;
+  private clapSpeed = 0;
+  private clapCooldown = 0;
   private from = new THREE.Vector3();
   private to = new THREE.Vector3();
 
@@ -66,6 +71,32 @@ export class Commander {
     arrows.begin();
     frame.hands.forEach((h, i) => this.updateHand(i, h, sim, dt, t, arrows));
     arrows.end();
+    this.detectClap(frame, sim, dt);
+  }
+
+  /** Two open hands slammed together → RALLY. */
+  private detectClap(frame: InputFrame, sim: Sim, dt: number) {
+    this.clapCooldown = Math.max(0, this.clapCooldown - dt);
+    const [a, b] = frame.hands;
+    if (!a.present || !b.present || a.landmarks.length !== 21 || b.landmarks.length !== 21 || sim.over) {
+      this.clapPrevD = -1;
+      this.clapSpeed = 0;
+      return;
+    }
+    const pa = palmCentre(a), pb = palmCentre(b);
+    const d = Math.hypot(pa.x - pb.x, (pa.y - pb.y) * 0.6);
+    if (this.clapPrevD >= 0 && dt > 0) {
+      const closing = (this.clapPrevD - d) / dt;
+      // short memory of the fastest recent approach
+      this.clapSpeed = Math.max(closing, this.clapSpeed - dt * 6);
+    }
+    this.clapPrevD = d;
+    const busy = a.pinch || b.pinch || a.fist || b.fist || this.ctl.some((c) => c.dragging);
+    if (!busy && this.allowRally && this.clapCooldown <= 0 && d < 0.17 && this.clapSpeed > 0.9) {
+      this.clapCooldown = 1.2;
+      this.clapSpeed = 0;
+      this.ev.rally(sim.rally());
+    }
   }
 
   private updateHand(i: number, h: HandState, sim: Sim, dt: number, t: number, arrows: DragArrows) {
@@ -164,4 +195,9 @@ export class Commander {
       c.mode = c.swatT > 0 ? 'swat' : 'hover';
     }
   }
+}
+
+function palmCentre(h: HandState) {
+  const L = h.landmarks;
+  return { x: (L[0].x + L[5].x + L[9].x + L[17].x) / 4, y: (L[0].y + L[5].y + L[9].y + L[17].y) / 4 };
 }
