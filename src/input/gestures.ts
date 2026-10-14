@@ -269,10 +269,13 @@ export function isPoint(m: HandMetrics, cfg: GestureConfig = DEFAULT_GESTURE): b
   return m.extended[1] && othersDown;
 }
 
-/** Instantaneous (un-debounced) classification. Precedence: pinch > middle > fist > open > point. */
+/**
+ * Instantaneous (un-debounced) classification. Precedence: middle > pinch > fist > open > point.
+ * Middle wins over pinch: the thumb usually rests on the curled index while flipping the bird.
+ */
 export function classifyGesture(m: HandMetrics, pinch: boolean, cfg: GestureConfig = DEFAULT_GESTURE): Gesture {
-  if (pinch) return 'pinch';
   if (isMiddle(m, cfg)) return 'middle';
+  if (pinch) return 'pinch';
   if (isFist(m, pinch)) return 'fist';
   if (isOpen(m)) return 'open';
   if (isPoint(m, cfg)) return 'point';
@@ -396,7 +399,7 @@ export class HandProcessor {
     // --- gestures ---------------------------------------------------------
     const mt = measureHand(lms, aspect, cfg);
     this.metrics = mt;
-    this.pinch = nextPinch(this.pinch && !fresh, mt, cfg);
+    this.pinch = nextPinch(this.pinch && !fresh, mt, cfg) && !isMiddle(mt, cfg);
     this.pinchStrength = pinchStrengthOf(mt.pinchRatio, cfg);
     this.gesture = this.debouncer.push(classifyGesture(mt, this.pinch, cfg), frameMs);
 

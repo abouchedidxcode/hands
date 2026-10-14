@@ -10,7 +10,11 @@ import {
 
 /** World height (above the ground plane) at which the hand floats. */
 const HAND_H = 3.6;
-/** How much MediaPipe z (relative depth) lifts joints toward the camera. */
+/**
+ * How much MediaPipe z (relative depth) moves joints. The player sits behind their hand, so a joint
+ * closer to the webcam (negative z) is farther from them: it goes DOWN toward the map. (Lifting it
+ * instead curled the fingers up at the viewer, which read as an upside-down, palm-up hand.)
+ */
 const DEPTH_K = 9;
 /**
  * Apparent size: the hand is shrunk around the cursor so its on-screen palm
@@ -156,7 +160,7 @@ class OneHand {
         // so the thumb/index midpoint stays exactly under the cursor
         const sx = cx + (l.x - cx) * k;
         const sy = cy + (l.y - cy) * k;
-        const hh = THREE.MathUtils.clamp(HAND_H - l.z * DEPTH_K * k, 1.8, 7);
+        const hh = THREE.MathUtils.clamp(HAND_H + l.z * DEPTH_K * k, 1.8, 7);
         if (!stage.screenToGround(sx, sy, hh, this.pts[i])) this.pts[i].set(0, hh, 0);
       }
       const swell = 1 + this.armedAmt * 0.05 * pulse + this.heat * 0.03;

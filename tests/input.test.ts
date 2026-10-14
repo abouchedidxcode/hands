@@ -120,6 +120,12 @@ describe('gesture classification', () => {
     });
   }
 
+  it('middle finger with the thumb resting on the curled index is still middle, not pinch', () => {
+    const pose: HandPose = { ...POSES.middle, pinch: 1 };
+    expect(classify(rawHandAt(0.5, 0.5, pose))).toBe('middle');
+    expect(classify(rawHandAt(0.5, 0.5, pose), true)).toBe('middle');
+  });
+
   it('is rotation tolerant', () => {
     for (const roll of [-0.6, 0.5]) {
       expect(classify(rawHandAt(0.5, 0.5, { ...POSES.open, roll }))).toBe('open');

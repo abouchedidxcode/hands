@@ -1,6 +1,10 @@
 import * as THREE from 'three';
 
-/** Shared GLSL for the god hand: fresnel-rim translucent body with flowing energy. */
+/**
+ * Shared GLSL for the god hand: fresnel-rim translucent body with flowing energy.
+ * NaN rule: pow() bases are clamped ≥ 0 and atan(0, 0) is avoided. Apple GPUs return NaN there,
+ * and bloom smears a single NaN pixel into a large blank box over the map.
+ */
 
 const NOISE = /* glsl */ `
 float gh_hash(vec3 p) { p = fract(p * 0.3183099 + 0.1); p *= 17.0; return fract(p.x * p.y * p.z * (p.x + p.y + p.z)); }
@@ -57,7 +61,7 @@ void main() {
   vec3 V = normalize(cameraPosition - vW);
   vec3 N = vN / max(length(vN), 1e-4); // normalize(0) is NaN on some GPUs
   float ndv = clamp(dot(N, V), 0.0, 1.0);
-  float fres = pow(1.0 - ndv, 2.6);
+  float fres = pow(max(1.0 - ndv, 0.0), 2.6);
   float lam = clamp(dot(N, uLight) * 0.5 + 0.5, 0.0, 1.0);
 
   float heat = uHeat;
@@ -65,18 +69,18 @@ void main() {
   float n2 = gh_noise(vW * 1.3 + vec3(uTime * 0.21, -uTime * 0.37, uTime * 0.17));
   vec3 col = uBody * (0.35 + 0.85 * lam) * (0.75 + 0.5 * n2);
   // energy pulses streaming wrist -> fingertips
-  float band = pow(0.5 + 0.5 * sin((flow * 3.2 - uTime * (0.55 + heat * 1.6)) * 6.2831), 10.0);
+  float band = pow(max(0.5 + 0.5 * sin((flow * 3.2 - uTime * (0.55 + heat * 1.6)) * 6.2831), 0.0), 10.0);
   float scan = smoothstep(0.82, 1.0, 0.5 + 0.5 * sin(vW.z * 30.0 + vW.x * 4.0 - uTime * 3.5));
   col += uBody * (band * (0.55 + heat) + scan * 0.22);
   // rim light
   col += uRim * fres * (0.95 + heat * 0.9 + uArmed * 0.8);
   // fingertips (thumb + index light up when pinching)
   float sel = 1.0 - step(1.5, fid);
-  float tipG = pow(tip, 2.2) * (uTip + uPinch * sel * 1.5 + heat * 0.5 + uArmed * 0.5);
+  float tipG = pow(max(tip, 0.0), 2.2) * (uTip + uPinch * sel * 1.5 + heat * 0.5 + uArmed * 0.5);
   col += uRim * tipG;
   // charge: hand heats up, crackling veins appear and densify
   float r = 1.0 - abs(gh_noise(vW * 3.4 + vec3(uTime * 1.7, uTime * 5.0, -uTime * 2.3)) * 2.0 - 1.0);
-  float veins = pow(r, mix(22.0, 5.0, heat)) * smoothstep(0.0, 0.25, heat) * (0.75 + 0.5 * uFlicker);
+  float veins = pow(max(r, 0.0), mix(22.0, 5.0, heat)) * smoothstep(0.0, 0.25, heat) * (0.75 + 0.5 * uFlicker);
   col = mix(col, col * 0.6 + uHot * 0.32, heat * 0.55);
   col += uHot * veins * (1.1 + uArmed * 1.4);
   col += uHot * edge * 1.6;
@@ -190,7 +194,8 @@ void main() {
   vec2 p = (vUv * 2.0 - 1.0) * uRm;
   float d = length(p);
   float aa = max(fwidth(d) * 1.2, 0.012);
-  float ang = atan(p.y, p.x) + uRot;
+  vec2 pq = d < 1e-5 ? vec2(1.0, 0.0) : p; // atan(0, 0) is undefined (NaN on some GPUs)
+  float ang = atan(pq.y, pq.x) + uRot;
   float fa = fract(ang / 6.2831853 * uDash);
   float dashes = smoothstep(0.0, 0.05, fa) * (1.0 - smoothstep(0.6, 0.65, fa));
   float ring = band(d, uRing, uWidth, aa) * mix(1.0, dashes, step(0.5, uDash));
@@ -203,7 +208,7 @@ void main() {
   float fill = inside * uFill * (0.35 + 0.65 * smoothstep(0.0, uRing, d));
   // danger: outer hazard ring with rotating chevrons + inner pulse ring
   float haz = band(d, uRing + uWidth * 2.2, uWidth * 0.9, aa)
-    * step(0.5, fract((atan(p.y, p.x) - uTime * 0.8) / 6.2831853 * 28.0));
+    * step(0.5, fract((atan(pq.y, pq.x) - uTime * 0.8) / 6.2831853 * 28.0));
   float pulseR = uRing * fract(uTime * 1.6);
   float pulse = band(d, pulseR, uWidth * 0.7, aa) * (1.0 - fract(uTime * 1.6));
   float dk = uDangerK;
