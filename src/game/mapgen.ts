@@ -124,3 +124,64 @@ export function generateVersusMap(seed: number, pairs = 7): Base[] {
   if (all().every((b) => Math.hypot(b.x, b.z) > 5)) bases.push(makeBase(bases.length, 'castle', 0, 0, NEUTRAL, 30));
   return bases;
 }
+
+/**
+ * Three-way rotationally symmetric map for online 1v1v1: capitals sit on an equilateral triangle
+ * and every neutral base has twins rotated by 120° and 240° about its centre, so all three gods
+ * face exactly the same distances. Faction f owns capital f.
+ */
+export function generateTriMap(seed: number, triples = 5): Base[] {
+  // a layout can come out thin (few spots survive all three rotations): retry deterministically
+  let best: Base[] = [];
+  for (let attempt = 0; attempt < 12 && best.length < 3 + 4 * 3; attempt++) {
+    const b = triLayout(seed * 7919 + 13 + attempt * 104729, triples);
+    if (b.length > best.length) best = b;
+  }
+  return best;
+}
+
+function triLayout(rngSeed: number, triples: number): Base[] {
+  const rng = new Rng(rngSeed);
+  const hw = BOARD.width / 2 - MARGIN_X;
+  const hd = BOARD.depth / 2 - MARGIN_Z;
+  // capital 0 points toward the camera (or away, by seed); the triangle fills the board's height
+  const R = hd * 1.06;
+  const flip = rng.next() < 0.5 ? 1 : -1;
+  const cz = flip * (hd * 0.92 - R);
+  const rot = (p: { x: number; z: number }, k: number) => {
+    const a = (k * 2 * Math.PI) / 3, c = Math.cos(a), s = Math.sin(a);
+    const dx = p.x, dz = p.z - cz;
+    return { x: dx * c - dz * s, z: cz + dx * s + dz * c };
+  };
+  const inside = (p: { x: number; z: number }) => Math.abs(p.x) <= hw && Math.abs(p.z) <= hd;
+  const cap0 = { x: 0, z: cz + flip * R };
+  const seeds: { x: number; z: number; type: BaseType; troops: number }[] = [{ ...cap0, type: 'castle', troops: 40 }];
+  const all = () => seeds.flatMap((b) => [0, 1, 2].map((k) => rot(b, k)));
+  let tries = 0;
+  while (seeds.length < triples + 1 && tries < 5000) {
+    tries++;
+    // sample inside capital 0's 120° sector, then check all three copies
+    const a = rng.range(-Math.PI / 3, Math.PI / 3), r = rng.range(3.5, R * 1.25);
+    const p = { x: Math.sin(a) * r, z: cz + flip * Math.cos(a) * r };
+    const copies = [0, 1, 2].map((k) => rot(p, k));
+    if (!copies.every(inside)) continue;
+    // only the middle of the wide board survives all three rotations: pack tighter if it's crowded
+    const gap = tries < 2000 ? 5.0 : 4.6;
+    if (!copies.every((c) => all().every((b) => Math.hypot(b.x - c.x, b.z - c.z) > gap))) continue;
+    if (Math.hypot(copies[0].x - copies[1].x, copies[0].z - copies[1].z) < gap) continue;
+    const rr = rng.next();
+    const type: BaseType = rr < 0.55 ? 'village' : rr < 0.8 ? 'tower' : 'castle';
+    const near = Math.hypot(p.x - cap0.x, p.z - cap0.z) < 9;
+    const early = near && seeds.length < 3;
+    const g = early ? rng.int(4, 8) : type === 'village' ? rng.int(8, 15) : type === 'tower' ? rng.int(10, 16) : rng.int(18, 26);
+    seeds.push({ ...p, type: early ? 'village' : type, troops: g });
+  }
+  const bases: Base[] = [];
+  for (let k = 0; k < 3; k++) { const c = rot(cap0, k); bases.push(makeBase(k, 'castle', c.x, c.z, k, 40)); }
+  for (const b of seeds.slice(1)) {
+    for (let k = 0; k < 3; k++) { const c = rot(b, k); bases.push(makeBase(bases.length, b.type, c.x, c.z, NEUTRAL, b.troops)); }
+  }
+  // the prize: a contested castle at the centre
+  if (all().every((b) => Math.hypot(b.x, b.z - cz) > 4.5)) bases.push(makeBase(bases.length, 'castle', 0, cz, NEUTRAL, 30));
+  return bases;
+}

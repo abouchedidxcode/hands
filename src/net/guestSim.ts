@@ -13,7 +13,7 @@ export class GuestSim extends Sim {
 
   constructor(bases: Base[], factions: number, private sendCmd: (c: Command) => void) {
     super(bases, factions);
-    this.humans = [0, 1];
+    this.humans = Array.from({ length: factions }, (_, f) => f);
   }
 
   // ---- commands go to the host (optimistic return values keep local feedback snappy)
@@ -65,10 +65,8 @@ export class GuestSim extends Sim {
     this.time = s.time + this.latency;
     this.over = s.over;
     this.winner = s.winner;
-    this.manaOf[0] = s.mana[0];
-    this.manaOf[1] = s.mana[1];
-    this.rallyUntilOf[0] = s.rallyUntil[0];
-    this.rallyUntilOf[1] = s.rallyUntil[1];
+    s.mana.forEach((m, f) => { if (f < this.factions) this.manaOf[f] = m; });
+    s.rallyUntil.forEach((r, f) => { if (f < this.factions) this.rallyUntilOf[f] = r; });
     s.bases.forEach((sb, i) => {
       const b = this.bases[i];
       if (!b) return;

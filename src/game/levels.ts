@@ -72,11 +72,11 @@ export function skirmish(seed: number): Level {
   };
 }
 
-/** Online 1v1 level (no AI, mirrored map). */
-export function versus(seed: number): Level {
+/** Online level (no AI, symmetric map): 2 players = duel (1v1), 3 = brawl (1v1v1). */
+export function versus(seed: number, players = 2): Level {
   return {
-    id: 200, name: 'Duel', subtitle: 'Online 1v1', par: 999,
-    map: { seed, enemies: 1, bases: 15, neutralMul: 1, playerStart: 40, enemyStart: 40 },
+    id: 200, name: players === 3 ? 'Brawl' : 'Duel', subtitle: players === 3 ? 'Online 1v1v1' : 'Online 1v1', par: 999,
+    map: { seed, enemies: players - 1, bases: 15, neutralMul: 1, playerStart: 40, enemyStart: 40 },
     ai: { think: 99, aggro: 0, focusPlayer: 1 },
   };
 }
