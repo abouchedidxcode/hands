@@ -71,7 +71,7 @@ export class HandSurface {
     const strip = (a0: number, b0: number, n: number) => {
       for (let j = 0; j < n; j++) {
         const j1 = (j + 1) % n;
-        idx.push(a0 + j, b0 + j, a0 + j1, a0 + j1, b0 + j, b0 + j1);
+        idx.push(a0 + j, a0 + j1, b0 + j, a0 + j1, b0 + j1, b0 + j);
       }
     };
     for (let f = 0; f < 5; f++) {
@@ -85,7 +85,7 @@ export class HandSurface {
       idx.push(top, row(0) + j1, row(0) + j);
       idx.push(bot, row(PALM_ROWS.length - 1) + j, row(PALM_ROWS.length - 1) + j1);
     }
-    for (let k = 0; k < PALM_ROWS.length - 1; k++) strip(row(k + 1), row(k), OUT_N);
+    for (let k = 0; k < PALM_ROWS.length - 1; k++) strip(row(k), row(k + 1), OUT_N);
     this.index = new THREE.BufferAttribute(new Uint16Array(idx), 1);
     this.geometry.setIndex(this.index);
   }
@@ -220,6 +220,14 @@ export class HandSurface {
           .addScaledVector(p3, 0.5 * t3 - 0.5 * t2);
       }
     }
+    // the static index buffer expects a clockwise outline (seen from +pn): flip if needed
+    let area = 0;
+    for (let j = 0; j < OUT_N; j++) {
+      const a = this.tmp.subVectors(this.outP[j], ctr);
+      const b = this.c.subVectors(this.outP[(j + 1) % OUT_N], ctr);
+      area += a.cross(b).dot(pn);
+    }
+    if (area > 0) this.outP.reverse();
     // outward in-plane normals
     for (let j = 0; j < OUT_N; j++) {
       const a = this.outP[(j + OUT_N - 1) % OUT_N], b = this.outP[(j + 1) % OUT_N];

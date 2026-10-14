@@ -48,19 +48,19 @@ export interface Skill {
 
 export const SKILLS: Record<'novice' | 'average' | 'skilled', Skill> = {
   novice: {
-    name: 'novice', hands: 1, interval: [1.5, 2.6], offhandSlow: 0, react: 0.75,
-    noise: 0.6, blunder: 0.2, margin: 1.0, reads: false, multiP: 0.12,
-    smiteP: 0.35, smiteMin: 6, aimErr: 1.4, swatP: 0.05, defendP: 0.25, rallyP: 0, idleP: 0.2,
+    name: 'novice', hands: 2, interval: [1.2, 2.0], offhandSlow: 2.5, react: 0.7,
+    noise: 0.6, blunder: 0.15, margin: 0.9, reads: false, multiP: 0.2,
+    smiteP: 0.35, smiteMin: 6, aimErr: 1.4, swatP: 0.05, defendP: 0.25, rallyP: 0, idleP: 0.12,
   },
   average: {
     name: 'average', hands: 2, interval: [1.0, 1.8], offhandSlow: 1.2, react: 0.5,
     noise: 0.35, blunder: 0.08, margin: 1.1, reads: true, multiP: 0.35,
-    smiteP: 0.5, smiteMin: 8, aimErr: 0.8, swatP: 0.15, defendP: 0.55, rallyP: 0.12, idleP: 0.1,
+    smiteP: 0.5, smiteMin: 8, aimErr: 1.0, swatP: 0.15, defendP: 0.55, rallyP: 0.12, idleP: 0.1,
   },
   skilled: {
     name: 'skilled', hands: 2, interval: [0.6, 1.15], offhandSlow: 0.3, react: 0.32,
     noise: 0.15, blunder: 0.02, margin: 1.2, reads: true, multiP: 0.6,
-    smiteP: 0.8, smiteMin: 10, aimErr: 0.4, swatP: 0.3, defendP: 0.85, rallyP: 0.5, idleP: 0.03,
+    smiteP: 0.8, smiteMin: 10, aimErr: 0.6, swatP: 0.3, defendP: 0.85, rallyP: 0.5, idleP: 0.03,
   },
 };
 
@@ -114,8 +114,10 @@ export class PlayerBot {
       // humans track the army they are aiming at with the fist
       let { x, z } = p;
       if (this.skill.reads) {
+        // ...but the fist lags a little behind a marching column
         const c = clusterNear(sim, x, z, 4);
-        if (c) { x = c.x; z = c.z; }
+        const lag = this.skill.interval[0] < 0.8 ? 0.15 : 0.3;
+        if (c) { x = c.x - c.vx * lag; z = c.z - c.vz * lag; }
       }
       x += this.rng.range(-1, 1) * this.skill.aimErr;
       z += this.rng.range(-1, 1) * this.skill.aimErr;
@@ -156,7 +158,7 @@ export class PlayerBot {
       for (const u of sim.units) if (u.alive && u.faction === PLAYER && sim.bases[u.to].owner !== PLAYER) marching++;
       if (gain + marching * 0.4 >= 45) return { kind: 'rally', at: 0 };
     }
-    if (sim.mana >= MANA.smiteCost && rng.chance(sk.smiteP)) {
+    if (sim.mana >= MANA.smiteCost && rng.chance(sim.mana > 90 ? Math.max(0.6, sk.smiteP) : sk.smiteP)) {
       const s = bestSmite(sim, inc);
       if (s && s.score >= sk.smiteMin) return { kind: 'smite', at: 0, x: s.x, z: s.z };
     }
@@ -231,6 +233,22 @@ export class PlayerBot {
     }
     if (best) return { kind: 'send', at: 0, from: best.from, to: best.to };
 
+    // Pressure: nothing "clean" — novices just throw their biggest stack at the nearest enemy,
+    // better players do it with a sweep when they are clearly ahead.
+    const str = sim.strength();
+    const rival = Math.max(...str.slice(1));
+    if (sk.reads ? str[PLAYER] > rival * 1.3 : rng.chance(0.5)) {
+      const enemies = sim.bases.filter((b) => b.owner > PLAYER);
+      const big = ready.slice().sort((a, b) => b.troops - a.troops);
+      if (enemies.length && big.length) {
+        const src = big[0];
+        const t = enemies.sort((a, b) => dist(a, src) - dist(b, src))[0];
+        const from = [src, ...big.slice(1).filter((o) => dist(o, src) < 9).slice(0, sk.reads ? 3 : 0)];
+        const sent = from.reduce((a, b) => a + Math.floor(b.troops * SIM.sendFraction), 0);
+        if (sent >= t.troops * 0.6 && sent >= 6) return { kind: 'send', at: 0, from: from.map((b) => b.id), to: t.id };
+      }
+    }
+
     // Consolidate: skilled players push full rear bases to the front.
     if (sk.reads || rng.chance(0.3)) {
       const full = mine.filter((b) => b.troops > b.cap * 0.9);
@@ -279,13 +297,13 @@ function bestSmite(sim: Sim, inc: number[][]): { x: number; z: number; score: nu
   return best;
 }
 
-function clusterNear(sim: Sim, x: number, z: number, r: number): { x: number; z: number } | null {
-  let n = 0, sx = 0, sz = 0;
+function clusterNear(sim: Sim, x: number, z: number, r: number): { x: number; z: number; vx: number; vz: number } | null {
+  let n = 0, sx = 0, sz = 0, vx = 0, vz = 0;
   for (const u of sim.units) {
     if (!u.alive || u.faction === PLAYER) continue;
-    if ((u.x - x) ** 2 + (u.z - z) ** 2 < r * r) { n++; sx += u.x; sz += u.z; }
+    if ((u.x - x) ** 2 + (u.z - z) ** 2 < r * r) { n++; sx += u.x; sz += u.z; vx += u.dx * u.speed; vz += u.dz * u.speed; }
   }
-  return n ? { x: sx / n, z: sz / n } : null;
+  return n ? { x: sx / n, z: sz / n, vx: vx / n, vz: vz / n } : null;
 }
 
 interface Column { key: string; n: number; to: number; hx: number; hz: number; dx: number; dz: number }

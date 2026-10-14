@@ -13,6 +13,10 @@ export interface AiParams {
   wake?: number;
   /** Faction flavours: Crimson aggressive, Amber expansionist, Violet opportunist (default true). */
   personality?: boolean;
+  /** Growth multiplier for this warlord's bases (late-level handicap, default 1). */
+  bonus?: number;
+  /** 0..1 — warlords leave each other alone and gang up on the player (default 0). */
+  pact?: number;
   /** Seconds after which warlords grow impatient and press attacks harder (anti-stall, default 80). */
   rageAt?: number;
 }
@@ -57,6 +61,7 @@ export class Warlord {
 
   update(sim: Sim, dt: number) {
     if (!sim.alive[this.faction] || sim.over) return;
+    if (this.p.bonus !== undefined) sim.growthMul[this.faction] = this.p.bonus;
     this.watch(sim);
     this.timer -= dt;
     if (this.timer > 0) return;
@@ -154,6 +159,7 @@ export class Warlord {
         } else {
           v *= P.hostile;
           if (t.owner === PLAYER) v *= this.p.focusPlayer;
+          else if (sim.hasPlayer && sim.alive[PLAYER]) v *= 1 - 0.85 * (this.p.pact ?? 0);
           // weakened / just emptied / freshly captured bases are juicy (counter-attacks)
           const emptied = sim.time - (this.drained[t.id] ?? -99) < 6 ? 1 : 0;
           const fresh = sim.time - t.captureTime < 5 ? 1 : 0;

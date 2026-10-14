@@ -23,6 +23,7 @@ export class Label {
     this.tex.generateMipmaps = true;
     this.tex.minFilter = THREE.LinearMipmapLinearFilter;
     const mat = new THREE.SpriteMaterial({ map: this.tex, depthTest: false, depthWrite: false, transparent: true, toneMapped: false });
+    mat.color.setScalar(0.8); // keep under the bloom threshold so the pill stays crisp
     this.sprite = new THREE.Sprite(mat);
     this.sprite.center.set(0.5, 0.0);
     this.sprite.scale.set(Label.W, Label.W * CH / CW, 1);
@@ -62,7 +63,7 @@ export class Label {
     // inner highlight
     if (mode !== 1) {
       roundRect(c, x + 6, y + 5, w - 12, h * 0.42, h * 0.21);
-      c.fillStyle = 'rgba(255,255,255,0.22)';
+      c.fillStyle = 'rgba(255,255,255,0.14)';
       c.fill();
     } else {
       roundRect(c, x + 5, y + 5, w - 10, h - 10, (h - 10) / 2);

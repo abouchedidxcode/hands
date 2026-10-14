@@ -20,6 +20,8 @@ export class Sim {
   winner = -99;
   mana: number = MANA.max * 0.5;
   stats: Stats = { captures: 0, lost: 0, kills: 0, smites: 0, swats: 0, rallies: 0, sent: 0, peakArmy: 0 };
+  /** Per-faction growth multiplier (difficulty handicap; warlords set their own from AiParams.bonus). */
+  growthMul: number[];
   /** Sim time until which the player's RALLY is active (-1 = never). */
   rallyUntil = -1;
   /** When false (attract mode), the player faction is AI-controlled / absent and mana is ignored. */
@@ -37,6 +39,7 @@ export class Sim {
     this.bases = bases;
     this.factions = factions;
     this.alive = Array.from({ length: factions }, () => true);
+    this.growthMul = Array.from({ length: factions }, () => 1);
     this.gw = Math.ceil((BOARD.width + 8) / CELL);
     this.gh = Math.ceil((BOARD.depth + 8) / CELL);
     this.head = new Int32Array(this.gw * this.gh);
@@ -165,7 +168,7 @@ export class Sim {
     const rally = this.rallyActive();
     for (const b of this.bases) {
       if (b.owner === NEUTRAL) continue;
-      const g = rally && b.owner === PLAYER ? b.growth * MANA.rallyGrowth : b.growth;
+      const g = b.growth * (this.growthMul[b.owner] ?? 1) * (rally && b.owner === PLAYER ? MANA.rallyGrowth : 1);
       if (b.troops < b.cap) b.troops = Math.min(b.cap, b.troops + g * dt);
       else b.troops = Math.max(b.cap, b.troops - SIM.overflowDecay * dt);
     }
