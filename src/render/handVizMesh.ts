@@ -144,6 +144,9 @@ export class HandSurface {
           .addScaledVector(p2, -4.5 * t2 + 4 * t + 0.5)
           .addScaledVector(p3, 1.5 * t2 - t);
         if (T.lengthSq() < 1e-10) T.subVectors(p2, p1);
+        // joints on top of each other (tight fist): keep the previous direction, never a zero
+        // tangent, which would give zero normals → NaN in the shader → bloom smears a blank box
+        if (T.lengthSq() < 1e-10) T.copy(n > 0 ? this.ringT[n - 1] : this.axis);
         T.normalize();
         n++;
       }
