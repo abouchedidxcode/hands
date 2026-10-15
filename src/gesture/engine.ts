@@ -67,7 +67,7 @@ export class GestureEngine {
   private tracks: Track[] = [];
   private nextId = 0;
   private listeners = new Map<string, Set<Listener>>();
-  private two = { prevD: -1, clapSpeed: 0, clapCool: 0, grip: '' as string, d0: 0, a0: 0, zoomFired: '', steerFired: '', lastT: 0 };
+  private two = { prevD: -1, clapSpeed: 0, clapCool: 0, grip: '' as string, d0: 0, a0: 0, zoomFired: '', steerFired: '', lastT: 0, busyUntil: 0 };
 
   constructor(config: Partial<EngineConfig> = {}) {
     this.config = {
@@ -121,8 +121,13 @@ export class GestureEngine {
     }
     this.tracks = this.tracks.filter((tr) => t - tr.lastSeen <= LOST_MS);
 
+    // both hands moving fast in opposite directions → a two-hand gesture, not two one-hand swipes
+    const movers = live.map(([tr]) => tr).filter((tr) => Math.hypot(tr.vel.x, tr.vel.y) > 0.5);
+    if (movers.length >= 2 && movers[0].vel.x * movers[1].vel.x + movers[0].vel.y * movers[1].vel.y < 0) this.two.busyUntil = t + 300;
+    const busy = t < this.two.busyUntil;
+
     const hands: HandResult[] = [];
-    for (const [tr, input] of live) hands.push(this.updateHand(tr, input, t, emit));
+    for (const [tr, input] of live) hands.push(this.updateHand(tr, input, t, emit, busy));
     hands.sort((a, b) => a.id - b.id);
     const twoHand = this.updateTwo(hands, t, emit);
 
@@ -173,7 +178,7 @@ export class GestureEngine {
   }
 
   // ---------------------------------------------------------------- one hand
-  private updateHand(tr: Track, input: HandInput, t: number, emit: (e: GestureEvent) => void): HandResult {
+  private updateHand(tr: Track, input: HandInput, t: number, emit: (e: GestureEvent) => void, busy = false): HandResult {
     const sec = t / 1000;
     const filt = (pts: Vec3[], f: OneEuroFilter[], scale: number) => pts.map((p, i) => ({
       x: f[i * 3].filter(p.x * scale, sec) / scale,
@@ -223,7 +228,7 @@ export class GestureEngine {
     // ---- motion history + velocity
     const pinch = 1 - smooth(0.2, 0.42, f.tipGap[0]);
     const prev = tr.hist[tr.hist.length - 1];
-    const sample: Sample = { t, x: f.center.x, y: f.center.y, size: f.size, roll: f.roll, pose: tr.pose, pinch };
+    const sample: Sample = { t, x: f.center.x, y: f.center.y, size: f.size, roll: f.roll, pose: tr.pose, pinch, open: f.openness };
     if (prev && t > prev.t) {
       const dt = (t - prev.t) / 1000, k = 1 - Math.exp(-dt / 0.06);
       tr.vel.x += k * ((sample.x - prev.x) / dt - tr.vel.x);
@@ -233,7 +238,7 @@ export class GestureEngine {
     while (tr.hist.length && t - tr.hist[0].t > HISTORY_MS) tr.hist.shift();
     for (const d of this.motions) {
       const mem = (tr.mem[d.id] ??= {});
-      const hit = d.detect({ h: tr.hist, now: t, cfg: this.config.motion, mem });
+      const hit = d.detect({ h: tr.hist, now: t, cfg: this.config.motion, mem, busy });
       if (!hit) continue;
       const cd = d.cooldownMs ?? this.config.motion.cooldownMs;
       if (t < (tr.cooldown[d.id] ?? 0)) continue;

@@ -13,6 +13,7 @@
   },
   "dependencies": {
     "@mediapipe/tasks-vision": "^1.1.0",
+    "cannon-es": "^0.20.0",
     "three": "^0.186.1",
     "trystero": "^0.26.0"
   },

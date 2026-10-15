@@ -38,6 +38,12 @@ the game. **Gesture Lab** (`lab.html`, live at https://abouchedidxcode.github.io
 every gesture live, runs reliability/intuitiveness tests and tunes the engine. See
 [`src/gesture/README.md`](src/gesture/README.md).
 
+**Gesture Sandbox** (`sandbox.html`, live at https://abouchedidxcode.github.io/hands/sandbox.html) is a
+physics playground driven by 15 gestures: grab, throw, spawn balls, crates and towers, lightning,
+cannonballs, shockwaves, a vacuum, tornados, wind, a thunderclap, meteors and fireworks, clearing the
+field, and a two-hand camera. Mouse and keys work too. `scripts/sandbox-e2e.mjs` performs every
+gesture with synthetic hands through the engine and checks that each action fires.
+
 ## Build / deploy
 
 ```bash

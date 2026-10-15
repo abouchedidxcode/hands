@@ -18,6 +18,8 @@ export interface HandPose {
   pinch: number;
   /** In-plane rotation (radians, positive = counter-clockwise on screen). */
   roll?: number;
+  /** Finger splay: multiplies each finger's angle away from the middle finger (1 = natural). */
+  spread?: number;
 }
 
 export const POSES = {
@@ -53,7 +55,8 @@ export function handShape(pose: HandPose): V3[] {
   const out: V3[] = new Array(21);
   out[LM.WRIST] = [0, 0, 0];
   for (let f = 0; f < 4; f++) {
-    const { mcp, dir, seg } = FINGERS[f];
+    const { mcp, seg } = FINGERS[f];
+    const dir = 90 + (FINGERS[f].dir - 90) * (pose.spread ?? 1);
     let c = pose.curl[f + 1];
     if (f === 0) c = Math.max(c, 0.5 * pose.pinch); // a pinching index bends a bit
     const base = LM.INDEX_MCP + f * 4;
