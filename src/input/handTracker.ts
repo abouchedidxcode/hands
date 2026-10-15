@@ -193,6 +193,7 @@ export class HandTracker {
       const cat = res.handedness[i]?.[0];
       hands.push({
         landmarks: lms.map((p) => ({ x: p.x, y: p.y, z: p.z })),
+        world: res.worldLandmarks?.[i]?.map((p) => ({ x: p.x, y: p.y, z: p.z })),
         label: cat?.categoryName === 'Left' ? 'Left' : 'Right',
         score: cat?.score ?? 0.5,
       });
