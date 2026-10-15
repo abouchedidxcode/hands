@@ -15,6 +15,7 @@ button { font: inherit; color: inherit; cursor: pointer; }
 .brand .sub { color: var(--muted); font-size: 12px; }
 .tabs { display: flex; gap: 4px; margin-left: 12px; }
 .tabs button { background: none; border: 1px solid transparent; border-radius: 8px; padding: 6px 14px; color: var(--muted); font-weight: 600; }
+.tabs .sbl { align-self: center; margin-left: 6px; color: var(--gold); text-decoration: none; font-weight: 600; padding: 6px 10px; }
 .tabs button.on { color: var(--text); background: var(--card); border-color: var(--line); }
 .status { margin-left: auto; display: flex; align-items: center; gap: 8px; color: var(--muted); font-family: var(--mono); font-size: 12px; white-space: nowrap; }
 .dot { width: 9px; height: 9px; border-radius: 50%; background: #666; }

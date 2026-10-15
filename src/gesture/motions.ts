@@ -10,6 +10,8 @@ export interface Sample {
   roll: number;       // radians
   pose: string | null;
   pinch: number;      // 0..1
+  /** Raw (undebounced) mean finger extension 0..1. */
+  open: number;
 }
 
 export interface MotionConfig {
@@ -60,6 +62,8 @@ export interface MotionContext {
   cfg: MotionConfig;
   /** Per-hand scratch space a detector may keep between frames. */
   mem: Record<string, number>;
+  /** Both hands are moving fast in opposite directions: a two-hand gesture (clap, zoom, wheel) is under way. */
+  busy?: boolean;
 }
 
 export type MotionDetector = {
@@ -78,11 +82,36 @@ function back(h: Sample[], now: number, ms: number): Sample {
 const within = (h: Sample[], now: number, ms: number) => h.filter((s) => now - s.t <= ms);
 
 export const MOTIONS: MotionDetector[] = [
+  // throw first: a throw is also a fast sideways move, and must win over the swipe it contains
+  {
+    id: 'throw', names: ['throw'],
+    detect: ({ h, now, cfg }) => {
+      if (h.length < 3) return null;
+      const cur = h[h.length - 1];
+      // react to the fingers actually opening (raw), not the debounced pose: by the time "open"
+      // is confirmed the arm has already slowed down
+      if (cur.open < 0.6) return null;
+      // was a fist a moment ago?
+      const recent = within(h, now, 300);
+      if (!recent.some((s) => s.pose === 'fist' || s.pose === 'claw')) return null;
+      const old = back(h, now, 120);
+      const dt = (cur.t - old.t) / 1000;
+      if (dt <= 0) return null;
+      const vx = (cur.x - old.x) / dt, vy = (cur.y - old.y) / dt;
+      const sp = Math.hypot(vx, vy);
+      if (sp < cfg.throwSpeed) return null;
+      return { name: 'throw', reset: true, data: { vx: +vx.toFixed(2), vy: +vy.toFixed(2) } };
+    },
+  },
   {
     id: 'swipe', names: ['swipe-left', 'swipe-right', 'swipe-up', 'swipe-down'],
-    detect: ({ h, now, cfg }) => {
+    detect: ({ h, now, cfg, busy }) => {
       const cur = h[h.length - 1], old = back(h, now, cfg.swipeMs);
       if (now - old.t < cfg.swipeMs * 0.4) return null;
+      // each hand of a clap / zoom / wheel looks like a swipe on its own
+      if (busy) return null;
+      // a moving fist is carrying something (and may be about to throw it), not swiping
+      if (cur.pose === 'fist') return null;
       const dx = cur.x - old.x, dy = cur.y - old.y;
       const ax = Math.abs(dx), ay = Math.abs(dy);
       if (Math.max(ax, ay) < cfg.swipeDist) return null;
@@ -177,24 +206,6 @@ export const MOTIONS: MotionDetector[] = [
         return { name: dbl ? 'double-tap' : 'tap' };
       }
       return null;
-    },
-  },
-  {
-    id: 'throw', names: ['throw'],
-    detect: ({ h, now, cfg }) => {
-      if (h.length < 3) return null;
-      const cur = h[h.length - 1];
-      if (cur.pose !== 'open') return null;
-      // was a fist a moment ago?
-      const recent = within(h, now, 250);
-      if (!recent.some((s) => s.pose === 'fist' || s.pose === 'claw')) return null;
-      const old = back(h, now, 120);
-      const dt = (cur.t - old.t) / 1000;
-      if (dt <= 0) return null;
-      const vx = (cur.x - old.x) / dt, vy = (cur.y - old.y) / dt;
-      const sp = Math.hypot(vx, vy);
-      if (sp < cfg.throwSpeed) return null;
-      return { name: 'throw', reset: true, data: { vx: +vx.toFixed(2), vy: +vy.toFixed(2) } };
     },
   },
 ];

@@ -7,6 +7,7 @@ const P: Record<string, HandPose> = {
   fist: { curl: [1, 1, 1, 1, 1], pinch: 0 },
   point: { curl: [1, 0, 1, 1, 1], pinch: 0 },
   middle: { curl: [1, 1, 0, 1, 1], pinch: 0 },
+  victory: { curl: [1, 0, 0, 1, 1], pinch: 0, spread: 3 },
   three: { curl: [1, 0, 0, 0, 1], pinch: 0 },
   four: { curl: [1, 0, 0, 0, 0], pinch: 0 },
   rock: { curl: [1, 0, 1, 1, 0], pinch: 0 },
@@ -154,6 +155,11 @@ describe('gesture engine: motions', () => {
     }
   });
 
+  it('a throw is not also a swipe', () => {
+    const ev = run((t) => [hand(lerp(0.3, 0.75, (t - 400) / 250), 0.5, t < 520 ? P.fist : P.open)], 1000);
+    expect(names(ev, 'motion').filter((n) => n !== 'hold')).toEqual(['throw']);
+  });
+
   it('hold fires once per pose', () => {
     const ev = run(() => [hand(0.5, 0.5, P.rock)], 2500);
     expect(ev.filter((e) => e.name === 'hold')).toHaveLength(1);
@@ -169,11 +175,14 @@ describe('gesture engine: two hands', () => {
   it('clap', () => {
     const ev = run((t) => { const d = lerp(0.25, 0, (t - 200) / 200); return two(0.5 - d, 0.5, 0.5 + d, 0.5, P.open); }, 700);
     expect(names(ev, 'two-hand')).toEqual(['clap']);
+    // neither hand counts as swiping on its own
+    expect(names(ev, 'motion').filter((n) => n.startsWith('swipe'))).toEqual([]);
   });
 
   it('zoom in and out with both hands pinching', () => {
     const zin = run((t) => { const d = lerp(0.08, 0.25, (t - 300) / 400); return two(0.5 - d, 0.5, 0.5 + d, 0.5, P.pinch); }, 1000);
     expect(names(zin, 'two-hand')).toContain('zoom-in');
+    expect(names(zin, 'motion').filter((n) => n.startsWith('swipe'))).toEqual([]);
     const zout = run((t) => { const d = lerp(0.25, 0.08, (t - 300) / 400); return two(0.5 - d, 0.5, 0.5 + d, 0.5, P.pinch); }, 1000);
     expect(names(zout, 'two-hand')).toContain('zoom-out');
   });
