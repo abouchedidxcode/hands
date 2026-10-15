@@ -30,6 +30,14 @@ to pause.
 No webcam? The game falls back to the mouse: left-drag = pinch, hold right button = fist
 (release to smite), shift + flick = swat.
 
+## Gesture Lab & gesture engine
+
+`src/gesture/` is a standalone gesture engine for hand-controlled games: 20 poses, 16 one-hand motions
+and 5 two-hand gestures, with events, continuous values and tunable thresholds. It doesn't depend on
+the game. **Gesture Lab** (`lab.html`, live at https://abouchedidxcode.github.io/hands/lab.html) shows
+every gesture live, runs reliability/intuitiveness tests and tunes the engine. See
+[`src/gesture/README.md`](src/gesture/README.md).
+
 ## Build / deploy
 
 ```bash

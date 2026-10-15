@@ -38,6 +38,8 @@ export interface RawHand {
   label: 'Left' | 'Right';
   /** Handedness/presence score 0..1. */
   score: number;
+  /** MediaPipe world landmarks: metres, origin at the hand's centre, un-mirrored (when available). */
+  world?: RawLandmark[];
 }
 
 // ---------------------------------------------------------------------------
