@@ -7,6 +7,9 @@ html, body { margin: 0; height: 100%; overflow: hidden; background: #bfe6ff; col
 
 .bar { position: fixed; top: 12px; left: 50%; transform: translateX(-50%); display: flex; align-items: center; gap: 14px; padding: 8px 16px; background: var(--card); border-radius: 999px; box-shadow: 0 4px 18px rgba(0, 0, 0, 0.12); white-space: nowrap; }
 .bar b { letter-spacing: 0.06em; }
+.modes { display: inline-flex; background: #eef3f8; border-radius: 999px; padding: 3px; gap: 2px; }
+.modes button { font: inherit; font-weight: 700; font-size: 13px; border: none; background: none; color: #5b6878; padding: 5px 12px; border-radius: 999px; cursor: pointer; }
+.modes button.on { background: #fff; color: var(--ink); box-shadow: 0 1px 4px rgba(0, 0, 0, 0.12); }
 .bar a { color: #2a6fdb; text-decoration: none; font-weight: 600; font-size: 13px; }
 .status { font-size: 12px; color: #5b6878; }
 
@@ -49,3 +52,34 @@ html, body { margin: 0; height: 100%; overflow: hidden; background: #bfe6ff; col
   .pip { width: 120px; bottom: calc(34vh + 24px); }
   .bar a { display: none; }
 }
+
+/* mode HUD strip (City Smash stats) and centred overlay (results) */
+.mode-hud { position: fixed; top: 64px; left: 50%; transform: translateX(-50%); display: flex; gap: 8px; pointer-events: none; }
+.mode-hud:empty { display: none; }
+.mode-hud .pill { background: var(--card); border-radius: 999px; padding: 6px 14px; box-shadow: 0 4px 14px rgba(0, 0, 0, 0.12); font-weight: 700; font-size: 15px; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.mode-hud .pill small { font-weight: 600; color: #5b6878; font-size: 11px; letter-spacing: 0.08em; margin-right: 6px; }
+.mode-hud .pill.money { color: #1f7a3f; }
+.mode-hud .pill.combo { background: #ff9f1c; color: #fff; transform-origin: center; }
+.mode-hud .pill.combo small { color: rgba(255,255,255,0.85); }
+.mode-hud .pill.combo.pop { animation: pop 0.25s ease-out; }
+.mode-hud .pill.hurry { background: #ef476f; color: #fff; }
+.mode-hud .pill.hurry small { color: rgba(255,255,255,0.85); }
+@keyframes pop { 0% { transform: scale(1.35); } 100% { transform: scale(1); } }
+.mode-overlay { position: fixed; inset: 0; display: grid; place-items: center; pointer-events: none; }
+.mode-overlay .card { pointer-events: auto; }
+.results h1 { font-size: 34px; margin: 2px 0; }
+.results .rank { font-size: 15px; font-weight: 700; color: #ef476f; letter-spacing: 0.06em; }
+.results .grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin: 14px 0 8px; }
+.results .grid div { background: #f3f6fa; border-radius: 12px; padding: 8px 4px; }
+.results .grid b { display: block; font-size: 20px; }
+.results .grid span { font-size: 11px; color: #5b6878; letter-spacing: 0.06em; }
+.results .best { font-size: 13px; color: #5b6878; }
+.results .best.new { color: #1f7a3f; font-weight: 700; }
+.flash { position: fixed; inset: 0; pointer-events: none; opacity: 0; }
+.flash.go { animation: flash 0.5s ease-out; }
+@keyframes flash { 0% { opacity: var(--a, 0.8); } 100% { opacity: 0; } }
+body[data-mode='city'] { background: #a9d4f5; }
+
+/* City Smash: toasts sit below the HUD pills */
+body[data-mode='city'] .toast { top: 112px; }
+body[data-mode='city'] .hold { top: 160px; }

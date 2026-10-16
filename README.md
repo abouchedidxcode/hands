@@ -27,8 +27,8 @@ ring fills, or pinch it.
 Tips: good lighting, sit back ~60 cm, keep your whole hand in view. Drop both hands out of view
 to pause.
 
-No webcam? The game falls back to the mouse: left-drag = pinch, hold right button = fist
-(release to smite), shift + flick = swat.
+No webcam? The game falls back to the mouse: left-drag = fist (grab and carry), right button =
+middle finger (smite), hold Shift = open palm.
 
 ## Gesture Lab & gesture engine
 
@@ -43,6 +43,17 @@ physics playground driven by 15 gestures: grab, throw, spawn balls, crates and t
 cannonballs, shockwaves, a vacuum, tornados, wind, a thunderclap, meteors and fireworks, clearing the
 field, and a two-hand camera. Mouse and keys work too. `scripts/sandbox-e2e.mjs` performs every
 gesture with synthetic hands through the engine and checks that each action fires.
+
+**City Smash** (`sandbox.html?mode=city`, the second tab of the sandbox) is a 90-second city
+destruction game. Your hands become giant hands over a procedural city of breakable buildings,
+traffic and parks, and 17 gestures are powers. You can rip a tower out with a fist and fling it. A
+pinch tap drops a bomb and a double tap drops cluster bombs. Pointing fires a finger laser, a finger
+gun fires rockets and the middle finger calls lightning. A push slams the city flat, a pull opens a
+black hole and drawing a circle makes a tornado. A swipe sends a hurricane and a clap makes a sonic
+boom. Rock-on calls meteors, the peace sign calls a UFO, a thumbs-up calls an airstrike and a shake
+starts an earthquake. Hold a thumbs-down to get a new city. Damage is scored in dollars, with a
+combo multiplier and a rank at the end. `scripts/city-e2e.mjs` performs every power;
+`tests/city.test.ts` covers the destruction model. The physics uses cannon-es.
 
 ## Build / deploy
 

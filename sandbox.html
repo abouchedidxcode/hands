@@ -15,11 +15,15 @@
     <canvas id="hands2d"></canvas>
     <header class="bar">
       <b>🧸 GESTURE SANDBOX</b>
+      <span class="modes"><button data-mode="playground">🧸 Playground</button><button data-mode="city">🏙️ City Smash</button></span>
       <a href="./lab.html">Gesture Lab</a>
       <a href="./index.html">GODHAND</a>
       <span id="status" class="status">camera off</span>
     </header>
     <aside class="legend" id="legend"></aside>
+    <div id="mode-hud" class="mode-hud"></div>
+    <div id="mode-overlay" class="mode-overlay hidden"></div>
+    <div id="flash" class="flash"></div>
     <div id="toast" class="toast"></div>
     <div id="hold" class="hold hidden"><i></i><span>Hold 👎 to clear</span></div>
     <div class="pip"><video id="cam" playsinline muted autoplay></video><span id="pip-label">no camera</span></div>
@@ -27,7 +31,7 @@
       <div class="card">
         <div class="big">🧸</div>
         <h1>Gesture Sandbox</h1>
-        <p>A physics playground you control with your hands. Toss crates, knock down towers, summon tornados. 15 gestures, listed on the left.</p>
+        <p>A physics playground you control with your hands: toss crates and summon tornados in the <b>Playground</b>, or flatten a whole city in <b>City Smash</b>. Every gesture is listed on the left.</p>
         <button id="b-cam" class="primary">✋ Start camera</button>
         <button id="b-mouse" class="ghost">🖱️ Mouse &amp; keys instead</button>
         <p class="fine">Video stays on your device. Mouse: drag toys to throw them; keys 1–9, 0, M, F, X trigger the powers at the cursor.</p>
