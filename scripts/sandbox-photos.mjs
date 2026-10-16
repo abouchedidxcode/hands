@@ -1,5 +1,6 @@
 // Real MediaPipe + gesture engine in the sandbox: each hand photo is a fake webcam; reports the
 // recognised pose and which sandbox actions fired. Usage: node scripts/sandbox-photos.mjs URL dir [shots]
+// (MODE=city runs it in City Smash)
 import { chromium } from 'playwright';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -12,7 +13,8 @@ for (const f of fs.readdirSync(dir).filter((x) => x.endsWith('.y4m'))) {
   });
   const page = await b.newPage({ viewport: { width: 1280, height: 720 } });
   page.on('pageerror', (e) => console.log('pageerror', e.message));
-  await page.goto(url + 'sandbox.html' + (process.env.HI ? '' : '?lowres'), { waitUntil: 'domcontentloaded' });
+  const q = [process.env.MODE && `mode=${process.env.MODE}`, !process.env.HI && 'lowres'].filter(Boolean).join('&');
+  await page.goto(url + 'sandbox.html' + (q ? '?' + q : ''), { waitUntil: 'domcontentloaded' });
   await page.click('#b-cam');
   let r = null;
   for (let i = 0; i < 60; i++) {
